@@ -517,14 +517,19 @@ class RadialDistributionFunction(object):
             r = j * self.bin_size
             x.append(r)
         rdfs = self.RDFs
-        plt.figure()
-        for rdf in rdfs:
-            plt.plot(x, rdfs[rdf])
 
-        plt.xlabel("$r$, distance (Angstrom)")
-        plt.ylabel("g($r$)")
+        fig, ax1 = plt.subplots()
+
+        ax1.minorticks_on()
+        ax1.set_ylabel("RDF, g(r)", size=24)
+        ax1.set_xlabel("Radial Distance, r ($Å^{3}$)", size=24)
+        ax1.tick_params(which='major', length=8, width=1, direction='in', top=True, right=True, labelsize=14)
+        ax1.tick_params(which='minor', length=2, width=.5, direction='in', top=True, right=True, labelsize=14)
+
+        for rdf in rdfs:
+            ax1.plot(x, rdfs[rdf])
         plt.legend(self.get_pair_order, bbox_to_anchor=(0.975, 0.975), loc=0,
-                   borderaxespad=0., prop={'family': 'sans-serif', 'size': 13})
+                   borderaxespad=0., prop={'family': 'sans-serif', 'size': 13}, frameon=False)
         plt.title(self.title)
         return plt
 
