@@ -4,7 +4,7 @@ from multiprocessing import Pool
 from scipy.spatial import Voronoi
 from copy import deepcopy
 from pymatgen.analysis import structure_analyzer
-from pymatgen.util.coord_utils import get_angle
+#from pymatgen.util.coord_utils import get_angle
 from pymatgen.io.vasp.outputs import Xdatcar
 
 
@@ -235,7 +235,7 @@ class BondAngleDistribution(object):
                     elif (el2,el_origin,el1) in bond_angle_dict:
                         bond_angle_dict[ (el2,el_origin,el1) ][angle] += 1
                     else:
-                        print (el1,el_origin,el2)
+                        print(el1,el_origin,el2)
                         raise KeyError("Problem finding the triplet!!!")
         for triplet in bond_angle_dict:
             total = np.sum(bond_angle_dict[triplet])
@@ -361,7 +361,7 @@ class VoronoiAnalysis(object):
                 "This means if the center atom is in key"
                 if -1 in key:
                     "This means if an infinity point is in key"
-                    print "Cutoff too short. Exiting."
+                    print("Cutoff too short. Exiting.")
                     return None
                 else:
                     try:
@@ -383,7 +383,7 @@ class VoronoiAnalysis(object):
         Returns:
             A list of [voronoi_tesellation, count]
         """
-        print "This might take a while..."
+        print("This might take a while...")
         voro_dict = {}
         step = 0
         for structure in structures:
@@ -477,7 +477,7 @@ class RadialDistributionFunction(object):
         """
 
         frames = [(self.structures[i * self.step_freq], self.pairs, self.n_bins, self.cutoff, self.bin_size) for i in
-                  range(self.n_frames / self.step_freq)]
+                  range(int(np.floor(self.n_frames / self.step_freq)))]
         self.counter = len(frames)
         pool = Pool(nproc)
         results = pool.map(_process_frame, frames)
@@ -581,29 +581,6 @@ def get_smooth_rdfs(RDFs, passes=1):
                                  + 17 * RDFs[rdf][j] + 12 * RDFs[rdf][j + 1] - 3 * RDFs[rdf][j + 2]) / 35.0
             RDFs[rdf] = smooth_RDF
         passes -= 1
-        return get_smooth_rdfs(RDFs, passes=passes)
-
-
-def get_smooth_rdfs(RDFs, passes=1):
-    """
-    Helper function to recursively smooth RDFs using a 5-parameter Savitzky-Golay filter.
-    Args:
-        RDFs: A dictionary of partial radial distribution functions
-        with pairs as keys and RDFs as values.
-        passes: number of times the filter is applied during smoothing.
-    Returns
-        RDFs dictionary with with each RDF smoothed.
-    """
-    if passes==0:
-       return RDFs
-    else:
-        for rdf in RDFs:
-            smooth_RDF = deepcopy(RDFs[rdf])
-            for j in range(2,len(RDFs[rdf])-2):
-                smooth_RDF[j] = (-3*RDFs[rdf][j-2]+12*RDFs[rdf][j-1]
-                                 +17*RDFs[rdf][j]+12*RDFs[rdf][j+1]-3*RDFs[rdf][j+2])/35.0
-            RDFs[rdf] = smooth_RDF
-        passes-=1
         return get_smooth_rdfs(RDFs, passes=passes)
 
 

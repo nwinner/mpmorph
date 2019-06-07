@@ -1,16 +1,35 @@
-from fireworks import explicit_serialize, FireTaskBase, FWAction, Firework
+from fireworks import FireTaskBase, Firework
 from mpmorph.runners.amorphous_maker import AmorphousMaker
 from mpmorph.runners.rescale_volume import RescaleVolume
-from mpmorph.analysis.md_data import parse_pressure
-from atomate.vasp.firetasks.glue_tasks import CopyVaspOutputs
+from mpmorph.analysis.md_data import parse_pressure, get_MD_data
+from mpmorph.analysis.structural_analysis import RadialDistributionFunction, get_smooth_rdfs
+from mpmorph.analysis.diffusion import Diffusion
+from atomate.vasp.firetasks.glue_tasks import CopyVaspOutputs, get_calc_loc
 from atomate.vasp.firetasks.run_calc import RunVaspCustodian
 from atomate.common.firetasks.glue_tasks import PassCalcLocs
+from pymatgen.io.vasp.outputs import Xdatcar
 import shutil
 import numpy as np
 from atomate.vasp.firetasks.parse_outputs import VaspToDbTask
 import os
+import json
 
-__author__ = 'Muratahan Aykol <maykol@lbl.gov>'
+
+import random
+
+from pymatgen.io.lammps.data import LammpsData
+from pymatgen.io.vasp.sets import MITMDSet
+from pymatgen.core.periodic_table import Specie
+
+from fireworks.core.firework import FiretaskBase, FWAction
+from fireworks import explicit_serialize
+
+from atomate.utils.utils import get_logger
+from atomate.vasp.fireworks.core import MDFW
+
+__authors__ = 'Nicholas Winner, Muratahan Aykol'
+
+logger = get_logger(__name__)
 
 #TODO: 2. Add option to lead to a production run of specified length after density is found
 #TODO: 3. Switch to MPRelax Parameters in MD
@@ -151,7 +170,6 @@ class RescaleVolumeTask(FireTaskBase):
         return FWAction(stored_data=corr_vol.structure.as_dict())
 
 
-
 @explicit_serialize
 class CopyCalsHome(FireTaskBase):
     required_params = ["calc_home","run_name"]
@@ -186,3 +204,82 @@ class VaspMdToDiffusion(FireTaskBase):
 @explicit_serialize
 class VaspMdToStructuralAnalysis(FireTaskBase):
     pass
+
+
+@explicit_serialize
+class LammpsToVaspMD(FiretaskBase):
+    _fw_name = "LammpsToVasp"
+    required_params = ["atom_style", "start_temp", "end_temp", "nsteps"]
+    optional_params = ['time_step', 'vasp_input_set', 'user_kpoints_settings', 'vasp_cmd',
+                       'copy_vasp_outputs', 'db_file', 'name', 'parents']
+
+    def run_task(self, fw_spec):
+        atom_style  = self.get('atom_style')
+        start_temp  = self.get('start_temp')
+        end_temp    = self.get('end_temp')
+        nsteps      = self.get('nsteps')
+
+        time_step = self.get('time_step') or 1
+        vasp_cmd = self.get('vasp_cmd') or ">>vasp_cmd<<"
+        copy_vasp_outputs = self.get('copy_vasp_outputs') or False
+        user_incar_settings = self.get('user_incar_settings') or {}
+        user_kpoints_settings = self.get('user_kpoints_settings') or None
+        db_file = self.get('db_file') or None
+        name = self.get('name') or "VaspMDFW"
+        parents = self.get('parents') or None
+        transmute = self.get('transmute') or None
+
+        logger.info("PARSING \"lammps.final\" to VASP.")
+        data = LammpsData.from_file(os.path.join(os.getcwd(), self.get('final_data')),
+                                    atom_style=atom_style, sort_id=True)
+        structure = data.structure
+
+        if transmute:
+            sites = structure.sites
+            indices = []
+            for i, s in enumerate(sites):
+                if s.specie.symbol == transmute[0]:
+                    indices.append(i)
+            index = random.choice(indices)
+            structure.replace(index, species=transmute[1],
+                              properties={'charge': Specie(transmute[1]).oxi_state,
+                                          'velocities': structure.site_properties['velocities'][index]})
+
+        vasp_input_set = MITMDSet(structure, start_temp, end_temp, nsteps, time_step,
+                                  force_gamma=True, user_incar_settings=user_incar_settings)
+
+        if user_kpoints_settings:
+            v = vasp_input_set.as_dict()
+            v.update({"user_kpoints_settings": user_kpoints_settings})
+            vasp_input_set = vasp_input_set.from_dict(v)
+
+        fw = MDFW(structure, start_temp, end_temp, nsteps, vasp_input_set=vasp_input_set, vasp_cmd=vasp_cmd,
+                  copy_vasp_outputs=copy_vasp_outputs, db_file=db_file, name='MDFW')
+
+        return FWAction(additions=fw)
+
+
+@explicit_serialize
+class MDAnalysisTask(FireTaskBase):
+    required_params = []
+    optional_params = []
+
+    def run_task(self, fw_spec):
+        calc_dir = get_calc_loc(True, fw_spec["calc_locs"])["path"]
+        calc_loc = os.path.join(calc_dir, 'XDATCAR')
+        structures = Xdatcar(calc_loc).structures
+
+        rdf = RadialDistributionFunction(structures=structures)
+        rdf_dat = rdf.get_radial_distribution_functions(nproc=16)
+        rdf_smooth = get_smooth_rdfs(rdf, passes=5)
+        rdf_plt = rdf.plot_radial_distribution_functions()
+
+        md_data = get_MD_data(os.path.join(calc_dir, 'OUTCAR'))
+
+        with open('rdf.json', 'w') as json_file:
+            json.dump(rdf_dat, json_file)
+
+        with open('md_data.json', 'w') as json_file:
+            json.dump(md_data, json_file)
+
+        return FWAction()

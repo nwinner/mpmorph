@@ -5,6 +5,14 @@ from mpmorph.runners.amorphous_maker import AmorphousMaker
 from mpmorph.analysis.structural_analysis import get_sample_structures
 from atomate.vasp.firetasks.glue_tasks import CopyVaspOutputs
 from pymatgen.core.structure import Structure
+
+from atomate.lammps.workflows.core import PackmolFW, LammpsFW
+from fireworks.user_objects.firetasks.script_task import ScriptTask
+from atomate.common.firetasks.glue_tasks import CopyFilesFromCalcLoc, PassCalcLocs
+from pymatgen.core.structure import Structure
+
+from mpmorph.workflow.mdtasks import AmorphousMakerTask, LammpsToVaspMD, MDAnalysisTask
+
 import os
 
 
@@ -104,3 +112,135 @@ def get_relax_static_wf(structures, vasp_cmd=">>vasp_cmd<<", db_file=">>db_file<
         fw2=StaticFW(s, vasp_cmd=vasp_cmd, db_file=db_file, parents=[fw1])
         wfs.append(Workflow([fw1,fw2], name=name+str(s.composition.reduced_formula)) )
     return wfs
+
+
+def get_wf_pack_lammps_md(pack_input_set = {}, pre_relax_input_set = {}, md_input_set = {},
+                              name="MD WF", metadata=None, db_file=None):
+
+    """
+    A worflow for performing molecular dynamics with VASP. The real change versus the default one is the option
+    to pre-relax the structure. Pre-relaxation performs a random packing of your molecules/atoms into a box,
+    runs lammps on that structure, and then takes the resultant structure and gives it to VASP for ab-initio
+    molecular dynamics. This technique can greatly accelerate the time needed to converge a VASP MD run by having
+    the initial very poor structure handled by a classical force field, which will take you to a "reasonable" first
+    guess of a stable structure. All arguments following pre_relax are related to the pre-relaxation stage and
+    most of them need to be specified (see get_packmol_wf in atomate.lammps.workflows.core to see which are absolutely
+    necessary and which are optional).
+
+    If you perform pre-relaxation, set structure=None and instead give constituent molecules.
+
+    Args:
+        structure (Structure): input structure to be run through VASP if no pre-relaxation is needed
+        start_temp (int): the starting temperature for the MD run in VASP
+        start_temp (int): the ending
+        nsteps (int): the number of time steps to perform the VASP MD run
+        time_step (int): The time step for the VASP MD run (POTIM in the input file). Default=1
+        vasp_cmd (str): command to run (e.g. "vasp_std"). Default=">>vasp_cmd<<"
+        vasp_input_set (DictSet): vasp input set. Default=None
+        user_kpoints_settings (dict): example: {"grid_density": 7000}. Default=None
+        db_file (str): path to file containing the database credentials. Default=None
+        metadata (dict): meta data
+
+        pre_relax (bool): Whether or not to pre-relax the structure with packmol and lammps. Default=False
+        lammps_input_file (str): path to lammps input or template file. Strongly recommend having a line
+                                at the end of the file that simply says "write data final.data" but you can also
+                                specify the variable "lammps_final_data" to be the name of the file you wish
+                                to write in the lammps_user_settings
+        lammps_user_settings (dict): a dictionary with the user settings for the lammps run. These are used on a
+                                    template Lammps input file if variables are present in it.
+        constituent_molecules ([Molecules]): list of pymatgen Molecule objects
+        packing_config ([dict]): list of configuration dictionaries, one for each constituent molecule.
+        forcefield (ForceField): pymatgen.io.lammps.forcefield.ForceField object
+        final_box_size ([list]): list of list of low and high values for each dimension [[xlow, xhigh], ...]
+        topologies ([Topology]): list of Topology objects. If not given, will be set from the
+            topology of the constituent molecules.
+        ff_site_property (str): the name of the site property used for forcefield mapping
+        tolerance (float): packmol tolerance
+        filetype (str): packmol i/o file type.
+        control_params (dict): packmol control params
+        lammps_cmd (string): lammps command to run (skip the input file).
+        packmol_cmd (string): path to packmol bin
+        dump_filenames ([str]): list of dump file names
+        db_file (string): path to the db file.
+        name (str): workflow name
+
+    Returns:
+        Workflow
+    """
+
+
+    fws     = []
+    parents = []
+
+    # -------------------------------------------------------------------- #
+    # ----------------------- PACKMOL SECTION ---------------------------- #
+    # -------------------------------------------------------------------- #
+
+    composition = pack_input_set.get('composition')
+    box_scale = pack_input_set.get('box_scale')
+    packmol_path = pack_input_set.get('packmol_path') or "packmol"
+    clean = pack_input_set.get('clean') or True
+    tolerance = pack_input_set.get('tol') or True
+
+    pack_task = AmorphousMakerTask(composition=composition, box_scale=box_scale,
+                                   packmol_path=packmol_path, tolerance=tolerance, clean=clean)
+
+    line1 = "from pymatgen.io.lammps.data import LammpsData"
+    line2 = "LammpsData.from_xyz('{}', {},atom_style='{}',charges={}).write_file('{}')".format(
+        packmol_output_file, final_box_size, atom_style, charges, "lammps.data")
+
+    script1 = "echo " + line1 + " >> convert.py"
+    script2 = "echo \"" + line2 + "\" >> convert.py"
+    convert_task = ScriptTask(script=[script1, script2, "python convert.py"])
+
+    t = list(pack_task)
+    t.append(convert_task)
+    pack_fw = Firework(tasks=t, parents=None, name="PackFW")
+
+    fws.append(pack_fw)
+
+    # -------------------------------------------------------------------- #
+    # ----------------------- LAMMPS SECTION ----------------------------- #
+    # -------------------------------------------------------------------- #
+
+    lammps_input_set      = pre_relax_input_set.get('lammps_input_set') or {}
+    lammps_input_filename = pre_relax_input_set.get('lammps_input_file') or 'in.lammps'
+    data_filename         = pre_relax_input_set.get('data_filename') or 'lammps.data'
+    lammps_cmd            = pre_relax_input_set.get('lammps_cmd') or ">>lammps_cmd<<"
+    lammps_db_file        = pre_relax_input_set.get('db_file') or None
+    dump_filename         = pre_relax_input_set.get('dump_filename') or None
+
+    pre_relax_fw = LammpsFW(lammps_input_set=lammps_input_set, input_filename=lammps_input_filename,
+                         data_filename=data_filename, lammps_cmd=lammps_cmd,
+                         parents=None, name="PreRelaxFW", db_file=lammps_db_file,
+                         log_filename="log.lammps", dump_filename=dump_filename)
+
+    t = [CopyFilesFromCalcLoc(calc_loc="PackFW", filenames=["lammps.data"])]
+    t.extend(pre_relax_fw.tasks)
+    t.append(PassCalcLocs(name="PreRelaxFW"))
+    pre_relax_fw = Firework(tasks=t, parents=pack_fw, name="PreRelaxFW")
+
+    fws.append(pre_relax_fw)
+
+    # -------------------------------------------------------------------- #
+    # ----------------------- VASP SECTION ------------------------------- #
+    # -------------------------------------------------------------------- #
+
+    md_input_set['atom_style'] = atom_style
+    t = list(CopyFilesFromCalcLoc(calc_loc="PreRelaxFW", filenames=["final.data"]))
+    t.append(LammpsToVaspMD(**md_input_set))
+    t.append(MDAnalysisTask)
+    md_fw = Firework(tasks=t, name="MDFW", parents=[pre_relax_fw, pack_fw])
+
+    fws.append(md_fw)
+
+    wfname = name or "MD-WF"
+
+    wf = Workflow(fws, name=wfname, metadata=metadata)
+
+    return wf
+
+
+
+
+
