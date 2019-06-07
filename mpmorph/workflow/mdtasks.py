@@ -216,7 +216,7 @@ class PackToLammps(FireTaskBase):
 
         final_box_size = self.get('final_box_size')
         atom_style = self.get('atom_style') or 'full'
-        packmol_file = self.get('packmol_file') or 'output mixture.xyz'
+        packmol_file = self.get('packmol_file') or 'mixture.xyz'
         lammps_data = self.get('lammps_data', 'lammps.data')
         charges = self.get('charges', None)
 
