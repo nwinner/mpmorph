@@ -188,7 +188,7 @@ def get_wf_pack_lammps_vasp(pack_input_set = {}, pre_relax_input_set = {}, md_in
     pack_task = AmorphousMakerTask(composition=composition, box_scale=box_scale,
                                    packmol_path=packmol_path, tolerance=tolerance, clean=clean)
 
-    t = list(pack_task)
+    t = [pack_task]
     t.append(PackToLammps(atom_style=atom_style, final_box_size=box_scale, charges=charges))
     pack_fw = Firework(tasks=t, parents=None, name="PackFW")
 
@@ -222,9 +222,9 @@ def get_wf_pack_lammps_vasp(pack_input_set = {}, pre_relax_input_set = {}, md_in
     # -------------------------------------------------------------------- #
 
     md_input_set['atom_style'] = atom_style
-    t = list(CopyFilesFromCalcLoc(calc_loc="PreRelaxFW", filenames=["final.data"]))
+    t = [CopyFilesFromCalcLoc(calc_loc="PreRelaxFW", filenames=["final.data"])]
     t.append(LammpsToVaspMD(**md_input_set))
-    t.append(MDAnalysisTask)
+    #t.append(MDAnalysisTask())
     md_fw = Firework(tasks=t, name="MDFW", parents=[pre_relax_fw, pack_fw])
 
     fws.append(md_fw)
