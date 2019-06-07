@@ -7,7 +7,7 @@ from atomate.vasp.firetasks.glue_tasks import CopyVaspOutputs
 from pymatgen.core.periodic_table import Element
 from pymatgen.core.structure import Molecule
 
-from atomate.lammps.workflows.core import PackmolFW, LammpsFW
+from atomate.lammps.workflows.core import PackmolFW, LammpsFW, get_packmol_wf
 from atomate.lammps.firetasks.run_calc import RunPackmol
 from fireworks.user_objects.firetasks.script_task import ScriptTask
 from atomate.common.firetasks.glue_tasks import CopyFilesFromCalcLoc, PassCalcLocs
@@ -197,13 +197,16 @@ def get_wf_pack_lammps_vasp(pack_input_set = {}, pre_relax_input_set = {}, md_in
     packing_config = []
     molecules = []
     for k, v in composition.items():
-        molecules.append(Molecule([k],coords=[[0,0,0]]))
+        molecules.append(Molecule([k],coords=[[0, 0, 0]]))
         packing_config.append({'number': v, 'inside box': inside_box})
 
-    pack_task = RunPackmol(molecules=molecules, packing_config=packing_config, packmol_cmd='packmol', output_file='packed_mol.xyz',
-                           tolerance=tolerance, copy_to_current_on_exit=True)
+    pack_fw   = PackmolFW(molecules, packing_config=packing_config, tolerance=2.0, filetype="xyz",
+                          output_file="packed_mol.xyz", parents=None, name="PackmolFW", packmol_cmd="packmol")
 
-    t = [pack_task]
+    #pack_task = RunPackmol(molecules=molecules, packing_config=packing_config, packmol_cmd='packmol', output_file='packed_mol.xyz',
+    #                       tolerance=tolerance, copy_to_current_on_exit=True)
+
+    t = pack_fw.tasks
     t.append(PackToLammps(atom_style=atom_style, box_size=box_size, charges=charges))
     pack_fw = Firework(tasks=t, parents=None, name="PackFW")
 
@@ -212,6 +215,8 @@ def get_wf_pack_lammps_vasp(pack_input_set = {}, pre_relax_input_set = {}, md_in
     # -------------------------------------------------------------------- #
     # ----------------------- LAMMPS SECTION ----------------------------- #
     # -------------------------------------------------------------------- #
+
+
 
     lammps_input_set      = pre_relax_input_set.get('lammps_input_set') or {}
     lammps_input_filename = pre_relax_input_set.get('lammps_input_file') or 'in.lammps'
