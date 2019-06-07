@@ -182,7 +182,7 @@ def get_wf_pack_lammps_vasp(pack_input_set = {}, pre_relax_input_set = {}, md_in
 
     composition = pack_input_set.get('composition')
     box_size = pack_input_set.get('box_size')
-    tolerance = pack_input_set.get('tol') or True
+    tolerance = pack_input_set.get('tol') or 2
     charges = pack_input_set.get('charges') or None
 
     if isinstance(box_size, float):
