@@ -4,7 +4,7 @@ from mpmorph.workflow.mdtasks import SpawnMDFWTask, CopyCalsHome
 from mpmorph.runners.amorphous_maker import AmorphousMaker
 from mpmorph.analysis.structural_analysis import get_sample_structures
 from atomate.vasp.firetasks.glue_tasks import CopyVaspOutputs
-from pymatgen.core.structure import Structure
+from pymatgen.core.periodic_table import Element
 
 from atomate.lammps.workflows.core import PackmolFW, LammpsFW
 from fireworks.user_objects.firetasks.script_task import ScriptTask
@@ -172,7 +172,7 @@ def get_wf_pack_lammps_vasp(pack_input_set = {}, pre_relax_input_set = {}, md_in
     fws     = []
     parents = []
 
-    atom_style = pack_input_set.get('atom_style', 'charge')
+    atom_style = pack_input_set.get('atom_style') or 'charge'
 
     # -------------------------------------------------------------------- #
     # ----------------------- PACKMOL SECTION ---------------------------- #
@@ -183,12 +183,13 @@ def get_wf_pack_lammps_vasp(pack_input_set = {}, pre_relax_input_set = {}, md_in
     packmol_path = pack_input_set.get('packmol_path') or "packmol"
     clean = pack_input_set.get('clean') or True
     tolerance = pack_input_set.get('tol') or True
+    charges = pack_input_set.get('charges') or None
 
     pack_task = AmorphousMakerTask(composition=composition, box_scale=box_scale,
                                    packmol_path=packmol_path, tolerance=tolerance, clean=clean)
 
     t = list(pack_task)
-    t.append(PackToLammps(atom_style=atom_style, final_box_size=box_scale))
+    t.append(PackToLammps(atom_style=atom_style, final_box_size=box_scale, charges=charges))
     pack_fw = Firework(tasks=t, parents=None, name="PackFW")
 
     fws.append(pack_fw)
