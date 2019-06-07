@@ -185,6 +185,9 @@ def get_wf_pack_lammps_vasp(pack_input_set = {}, pre_relax_input_set = {}, md_in
     tolerance = pack_input_set.get('tol') or True
     charges = pack_input_set.get('charges') or None
 
+    if isinstance(box_size, float):
+        box_size = [(0, box_size), (0, box_size), (0, box_size)]
+
     inside_box = []
     for i in box_size:
         inside_box.append(i[0])
@@ -193,15 +196,15 @@ def get_wf_pack_lammps_vasp(pack_input_set = {}, pre_relax_input_set = {}, md_in
 
     packing_config = []
     molecules = []
-    for k,v in composition.items():
-        molecules.append(Molecule(k))
+    for k, v in composition.items():
+        molecules.append(Molecule([k],coords=[[0,0,0]]))
         packing_config.append({'number': v, 'inside box': inside_box})
 
     pack_task = RunPackmol(molecules=molecules, packing_config=packing_config, packmol_cmd='packmol', output_file='packed_mol.xyz',
                            tolerance=tolerance)
 
     t = [pack_task]
-    t.append(PackToLammps(atom_style=atom_style, final_box_size=box_size, charges=charges))
+    t.append(PackToLammps(atom_style=atom_style, box_size=box_size, charges=charges))
     pack_fw = Firework(tasks=t, parents=None, name="PackFW")
 
     fws.append(pack_fw)
