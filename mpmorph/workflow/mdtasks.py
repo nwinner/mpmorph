@@ -207,6 +207,25 @@ class VaspMdToStructuralAnalysis(FireTaskBase):
 
 
 @explicit_serialize
+class PackToLammps(FireTaskBase):
+
+    required_params = ['final_box_size']
+    optional_params = ['atom_style', 'packmol_file', 'lammps_data']
+
+    def run_task(self, fw_spec):
+
+        final_box_size = self.get('final_box_size')
+        atom_style = self.get('atom_style') or 'full'
+        packmol_file = self.get('packmol_file') or 'output mixture.xyz'
+        lammps_data = self.get(lammps_data, 'lammps.data')
+
+        data = LammpsData.from_xyz(packmol_file, final_box_size,
+                                   atom_style=atom_style, charges={})
+        data.write_file(lammps_data)
+
+        return FWAction()
+
+@explicit_serialize
 class LammpsToVaspMD(FiretaskBase):
     _fw_name = "LammpsToVasp"
     required_params = ["atom_style", "start_temp", "end_temp", "nsteps"]

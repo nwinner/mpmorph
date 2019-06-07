@@ -11,7 +11,7 @@ from fireworks.user_objects.firetasks.script_task import ScriptTask
 from atomate.common.firetasks.glue_tasks import CopyFilesFromCalcLoc, PassCalcLocs
 from pymatgen.core.structure import Structure
 
-from mpmorph.workflow.mdtasks import AmorphousMakerTask, LammpsToVaspMD, MDAnalysisTask
+from mpmorph.workflow.mdtasks import AmorphousMakerTask, LammpsToVaspMD, MDAnalysisTask, PackToLammps
 
 import os
 
@@ -114,7 +114,7 @@ def get_relax_static_wf(structures, vasp_cmd=">>vasp_cmd<<", db_file=">>db_file<
     return wfs
 
 
-def get_wf_pack_lammps_md(pack_input_set = {}, pre_relax_input_set = {}, md_input_set = {},
+def get_wf_pack_lammps_vasp(pack_input_set = {}, pre_relax_input_set = {}, md_input_set = {},
                               name="MD WF", metadata=None, db_file=None):
 
     """
@@ -172,6 +172,8 @@ def get_wf_pack_lammps_md(pack_input_set = {}, pre_relax_input_set = {}, md_inpu
     fws     = []
     parents = []
 
+    atom_style = pack_input_set.get('atom_style', 'charge')
+
     # -------------------------------------------------------------------- #
     # ----------------------- PACKMOL SECTION ---------------------------- #
     # -------------------------------------------------------------------- #
@@ -185,16 +187,8 @@ def get_wf_pack_lammps_md(pack_input_set = {}, pre_relax_input_set = {}, md_inpu
     pack_task = AmorphousMakerTask(composition=composition, box_scale=box_scale,
                                    packmol_path=packmol_path, tolerance=tolerance, clean=clean)
 
-    line1 = "from pymatgen.io.lammps.data import LammpsData"
-    line2 = "LammpsData.from_xyz('{}', {},atom_style='{}',charges={}).write_file('{}')".format(
-        packmol_output_file, final_box_size, atom_style, charges, "lammps.data")
-
-    script1 = "echo " + line1 + " >> convert.py"
-    script2 = "echo \"" + line2 + "\" >> convert.py"
-    convert_task = ScriptTask(script=[script1, script2, "python convert.py"])
-
     t = list(pack_task)
-    t.append(convert_task)
+    t.append(PackToLammps(atom_style=atom_style, final_box_size=box_scale))
     pack_fw = Firework(tasks=t, parents=None, name="PackFW")
 
     fws.append(pack_fw)
