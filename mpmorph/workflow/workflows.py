@@ -197,10 +197,7 @@ def get_wf_pack_lammps_vasp(pack_input_set = {}, pre_relax_input_set = {}, md_in
     packing_config = []
     molecules = []
     for k, v in composition.items():
-        if isinstance(Molecule, k):
-            molecules.append(k)
-        else:
-            molecules.append(Molecule([k], coords=[[0, 0, 0]]))
+        molecules.append(k)
         packing_config.append({'number': v, 'inside box': inside_box})
 
     pack_fw   = PackmolFW(molecules, packing_config=packing_config, tolerance=2.0, filetype="xyz",
