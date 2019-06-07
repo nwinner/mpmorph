@@ -213,6 +213,8 @@ class PackToLammps(FireTaskBase):
     optional_params = ['atom_style', 'packmol_file', 'lammps_data']
 
     def run_task(self, fw_spec):
+        calc_loc = self.get("calc_loc") or True
+        calc_dir = get_calc_loc(calc_loc, fw_spec["calc_locs"])["path"]
 
         box_size = self.get('box_size')
         atom_style = self.get('atom_style') or 'full'
@@ -220,7 +222,7 @@ class PackToLammps(FireTaskBase):
         lammps_data = self.get('lammps_data', 'lammps.data')
         charges = self.get('charges', None)
 
-        data = LammpsData.from_xyz(packmol_file, box_size,
+        data = LammpsData.from_xyz(os.path.join(calc_dir, packmol_file), box_size,
                                    atom_style=atom_style, charges=charges)
         data.write_file(lammps_data)
 
