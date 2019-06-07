@@ -4,7 +4,7 @@ Diffusion and Activation Barrier calculations
 from MD calculations.
 """
 
-__author__ = 'Muratahan Aykol <maykol@lbl.gov>'
+__authors__ = 'Nicholas Winner, Muratahan Aykol <maykol@lbl.gov>'
 
 import numpy as np
 import matplotlib.pyplot as plt

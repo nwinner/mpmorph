@@ -5,8 +5,10 @@ from mpmorph.runners.amorphous_maker import AmorphousMaker
 from mpmorph.analysis.structural_analysis import get_sample_structures
 from atomate.vasp.firetasks.glue_tasks import CopyVaspOutputs
 from pymatgen.core.periodic_table import Element
+from pymatgen.core.structure import Molecule
 
 from atomate.lammps.workflows.core import PackmolFW, LammpsFW
+from atomate.lammps.firetasks.run_calc import RunPackmol
 from fireworks.user_objects.firetasks.script_task import ScriptTask
 from atomate.common.firetasks.glue_tasks import CopyFilesFromCalcLoc, PassCalcLocs
 from pymatgen.core.structure import Structure
@@ -179,17 +181,27 @@ def get_wf_pack_lammps_vasp(pack_input_set = {}, pre_relax_input_set = {}, md_in
     # -------------------------------------------------------------------- #
 
     composition = pack_input_set.get('composition')
-    box_scale = pack_input_set.get('box_scale')
-    packmol_path = pack_input_set.get('packmol_path') or "packmol"
-    clean = pack_input_set.get('clean') or True
+    box_size = pack_input_set.get('box_size')
     tolerance = pack_input_set.get('tol') or True
     charges = pack_input_set.get('charges') or None
 
-    pack_task = AmorphousMakerTask(composition=composition, box_scale=box_scale,
-                                   packmol_path=packmol_path, tolerance=tolerance, clean=clean)
+    inside_box = []
+    for i in box_size:
+        inside_box.append(i[0])
+    for i in box_size
+        inside_box.append(i[1])
+
+    packing_config = []
+    molecules = []
+    for k,v in composition.items():
+        molecules.append(Molecule(k))
+        packing_config.append({'number': v, 'inside box': inside_box})
+
+    pack_task = RunPackmol(molecules=molecules, packing_config=, packmol_cmd='packmol', output_file='packed_mol.xyz',
+                           tolerance=tolerance)
 
     t = [pack_task]
-    t.append(PackToLammps(atom_style=atom_style, final_box_size=box_scale, charges=charges))
+    t.append(PackToLammps(atom_style=atom_style, final_box_size=box_size, charges=charges))
     pack_fw = Firework(tasks=t, parents=None, name="PackFW")
 
     fws.append(pack_fw)
