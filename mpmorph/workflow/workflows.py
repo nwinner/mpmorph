@@ -188,7 +188,7 @@ def get_wf_pack_lammps_vasp(pack_input_set = {}, pre_relax_input_set = {}, md_in
     inside_box = []
     for i in box_size:
         inside_box.append(i[0])
-    for i in box_size
+    for i in box_size:
         inside_box.append(i[1])
 
     packing_config = []
@@ -197,7 +197,7 @@ def get_wf_pack_lammps_vasp(pack_input_set = {}, pre_relax_input_set = {}, md_in
         molecules.append(Molecule(k))
         packing_config.append({'number': v, 'inside box': inside_box})
 
-    pack_task = RunPackmol(molecules=molecules, packing_config=, packmol_cmd='packmol', output_file='packed_mol.xyz',
+    pack_task = RunPackmol(molecules=molecules, packing_config=packing_config, packmol_cmd='packmol', output_file='packed_mol.xyz',
                            tolerance=tolerance)
 
     t = [pack_task]
