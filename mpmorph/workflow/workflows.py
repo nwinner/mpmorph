@@ -201,6 +201,7 @@ def get_wf_pack_lammps_vasp(pack_input_set = {}, pre_relax_input_set = {}, md_in
         packing_config.append({'number': v, 'inside box': inside_box})
 
     pack_fw   = PackmolFW(molecules, packing_config=packing_config, tolerance=2.0, filetype="xyz",
+                          copy_to_current_on_exit=True,
                           output_file="packed_mol.xyz", parents=None, name="PackmolFW", packmol_cmd="packmol")
 
     #pack_task = RunPackmol(molecules=molecules, packing_config=packing_config, packmol_cmd='packmol', output_file='packed_mol.xyz',
