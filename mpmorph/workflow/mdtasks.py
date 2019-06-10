@@ -8,6 +8,7 @@ from atomate.vasp.firetasks.glue_tasks import CopyVaspOutputs, get_calc_loc
 from atomate.vasp.firetasks.run_calc import RunVaspCustodian
 from atomate.common.firetasks.glue_tasks import PassCalcLocs
 from pymatgen.io.vasp.outputs import Xdatcar
+from pymatgen.core.structure import Structure
 import shutil
 import numpy as np
 from atomate.vasp.firetasks.parse_outputs import VaspToDbTask
@@ -254,7 +255,9 @@ class LammpsToVaspMD(FiretaskBase):
         logger.info("PARSING \"lammps.final\" to VASP.")
         data = LammpsData.from_file(os.path.join(os.getcwd(), self.get('final_data')),
                                     atom_style=atom_style, sort_id=True)
-        structure = data.structure
+        struc = data.structure
+        structure = Structure(lattice = struc.lattice, species=[s.specie for s in struc.sites],
+                              coords=[s.coords for s in struc.sites], coords_are_cartesian=True)
 
         if transmute:
             sites = structure.sites

@@ -53,7 +53,7 @@ def get_MD_data(outcar_path, search_keys=None, search_data_column=None):
     return data
 
 
-def autocorrelation(v, *args):
+def autocorrelation(v, **kwargs):
     """
     T function calculates the autocorrelation for an input vector v. The
     only difference is that this function accounts for v being composed of vectors, e.g: v[0] = [v_x, v_y, v_z]
@@ -73,12 +73,12 @@ def autocorrelation(v, *args):
         acf = []
         for i in transposed_v:
 
-            acf.append(autocorr(i, args))
+            acf.append(autocorr(i, kwargs))
 
         return np.mean(acf, axis=0)
 
     else:
-        return autocorr(v, args)
+        return autocorr(v, kwargs)
 
 
 def get_MD_stats(data_list):
