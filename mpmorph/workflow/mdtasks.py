@@ -267,8 +267,7 @@ class LammpsToVaspMD(FiretaskBase):
                     indices.append(i)
             index = random.choice(indices)
             structure.replace(index, species=transmute[1],
-                              properties={'charge': Specie(transmute[1]).oxi_state,
-                                          'velocities': structure.site_properties['velocities'][index]})
+                              properties={'charge': Specie(transmute[1]).oxi_state})
 
         vasp_input_set = MITMDSet(structure, start_temp, end_temp, nsteps, time_step,
                                   force_gamma=True, user_incar_settings=user_incar_settings)

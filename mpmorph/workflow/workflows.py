@@ -190,9 +190,9 @@ def get_wf_pack_lammps_vasp(pack_input_set = {}, pre_relax_input_set = {}, md_in
 
     inside_box = []
     for i in box_size:
-        inside_box.append(i[0]-2)
+        inside_box.append(i[0]-tolerance)
     for i in box_size:
-        inside_box.append(i[1]-2)
+        inside_box.append(i[1]-tolerance)
 
     packing_config = []
     molecules = []
@@ -242,7 +242,7 @@ def get_wf_pack_lammps_vasp(pack_input_set = {}, pre_relax_input_set = {}, md_in
     md_input_set['atom_style'] = atom_style
     t = [CopyFilesFromCalcLoc(calc_loc="PreRelaxFW", filenames=["final.data"])]
     t.append(LammpsToVaspMD(**md_input_set))
-    #t.append(MDAnalysisTask())
+    t.append(MDAnalysisTask())
     md_fw = Firework(tasks=t, name="MDFW", parents=[pre_relax_fw, pack_fw])
 
     fws.append(md_fw)
