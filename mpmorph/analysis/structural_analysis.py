@@ -466,7 +466,7 @@ class RadialDistributionFunction(object):
             raise ValueError("More bins required!")
         return _bins
 
-    def get_radial_distribution_functions(self, nproc=1):
+    def get_radial_distribution_functions(self, smooth=0, nproc=1):
         """
         Args:
             nproc: (int) number of processors to utilize (defaults to 1)
@@ -503,11 +503,11 @@ class RadialDistributionFunction(object):
                 self.RDFs[i][j] = self.RDFs[i][j] / self.n_species[
                     i[0]] / 4.0 / np.pi / r / r / self.bin_size / density_of_atom2 / self.counter
 
-        if self.smooth:
+        if smooth:
             self.RDFs = get_smooth_rdfs(self.RDFs, passes=self.smooth)
         return self.RDFs
 
-    def plot_radial_distribution_functions(self):
+    def plot_radial_distribution_functions(self, show=True, save=False):
         """
         :return: a plot of RDFs
         """
@@ -531,8 +531,11 @@ class RadialDistributionFunction(object):
         plt.legend(self.get_pair_order, bbox_to_anchor=(0.975, 0.975), loc=0,
                    borderaxespad=0., prop={'family': 'sans-serif', 'size': 13}, frameon=False)
         plt.title(self.title)
+        if save:
+            plt.savefig('rdf.png', fmt='png')
+        if show:
+            plt.show()
         return plt
-
 
 def _process_frame(data):
     """

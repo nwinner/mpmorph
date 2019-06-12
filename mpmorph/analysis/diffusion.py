@@ -9,7 +9,9 @@ __authors__ = 'Nicholas Winner, Muratahan Aykol <maykol@lbl.gov>'
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy import stats
-from pymatgen.io.vasp import Xdatcar
+from pymatgen.io.vasp.outputs import Xdatcar
+from mpmorph.analysis.utils import autocorrelation
+from astropy.stats import bootstrap
 
 
 class Diffusion(object):
@@ -31,16 +33,17 @@ class Diffusion(object):
         ci: (float) confidence interval desired estimating the mean D of population.
     """
 
-    def __init__(self, structures, corr_t, block_l, t_step=2.0, l_lim=50, skip_first=0, ci=0.95):
+    def __init__(self, structures, sampling_method='bootstrap', block_l=50, corr_t=1, t_step=2.0, l_lim=50, skip_first=0, ci=0.95):
         self.structures = structures
         self.abc = self.structures[0].lattice.abc
         self.natoms = len(self.structures[0])
+        self.sampling_method = sampling_method
         self.skip_first = skip_first
         self.total_t = len(self.structures)
         self.corr_t = corr_t
+        self.block_l = block_l
         self.l_lim = l_lim
         self.t_step = t_step
-        self.block_l = block_l
         self.ci = ci
         self.msds = None
         self.scaling_factor = 0.1 / self.t_step  # conv. to cm2/s
@@ -50,7 +53,10 @@ class Diffusion(object):
         n = (self.total_t - self.block_t - self.skip_first) / self.corr_t + 1
         if n <= 0:
             raise ValueError("Too many blocks for the correlation time")
-        return n
+        return int(n)
+
+    def n_trials(self, el):
+        return int(len(self.structures)/(2*self.get_tao(el)))
 
     @property
     def block_t(self):
@@ -70,14 +76,28 @@ class Diffusion(object):
         self.md = np.delete(self.md, [x for x in list(range(self.natoms)) if x not in s], 1)
 
         msds = []
-        for i in range(self.n_origins):
-            su = np.square(np.cumsum(self.md[i * self.corr_t: i * self.corr_t + self.block_t], axis=0))
-            msds.append(np.mean(su, axis=1))
+
+        block      = False
+        boot_strap = True
+
+        if self.sampling_method == 'block':
+            for i in range(self.n_origins):
+                su = np.square(np.cumsum(self.md[i * self.corr_t: i * self.corr_t + self.block_t], axis=0))
+                msds.append(np.mean(su, axis=1))
+
+        elif self.sampling_method == 'bootstrap':
+            boots = bootstrap(self.md, bootnum=self.n_trials(el))
+            self.block_l = len(boots[0])/self.corr_t
+            for boot in boots:
+                su = np.square(np.cumsum(boot, axis=0))
+                msds.append(np.mean(su, axis=1))
+
         self.msds = msds
 
     def plot_block_msds(self):
         for i in self.msds:
             plt.plot(i)
+        plt.show()
 
     def getD(self, el):
         """
@@ -113,6 +133,24 @@ class Diffusion(object):
         D_dict.update({"D": self.D_avg, "D_std": self.D_avg_std})
         return D_dict
 
+    def get_tao(self, el):
+        md = [np.zeros(self.structures[0].frac_coords.shape)]
+        for i in range(self.skip_first + 1, self.total_t):
+            dx = self.structures[i].frac_coords - self.structures[i - 1].frac_coords
+            dx -= np.round(dx)
+            md.append(dx)
+        self.md = np.array(md) * self.abc
+
+        # remove other elements from the rest of the calculations
+        s = set(self.structures[0].indices_from_symbol(el))
+        self.md = np.delete(self.md, [x for x in list(range(self.natoms)) if x not in s], 1)
+
+        mean_md = [np.mean(np.mean(x, axis=1), axis=0) for x in self.md]
+        acf = autocorrelation(mean_md)
+        tao = np.trapz(acf, np.arange(0,len(acf), self.t_step))
+        self.corr_t = tao
+        return tao
+
     @property
     def tao(self):
         tao_dict = {}
@@ -122,8 +160,33 @@ class Diffusion(object):
         return tao_dict
 
     def autocorrelation(self):
-        "to be implemented"
-        pass
+        df = self.positions
+
+        def disp(x):
+            return np.gradient(x, axis=0)
+
+        ids = {}
+        types = df.type.unique()
+        for i_type in types:
+            ids[i_type] = df[(df.Timestep == 1) & (df.type == i_type)]['Id'].values
+
+        for key, value in ids.items():
+            results = []
+            for id in value:
+                data = df[df['Id'] == id][['x', 'y', 'z']]
+                results.append(np.mean(disp(data), axis=1))
+            self.vel[key] = results
+
+        for key, value in self.vel.items():
+            acf = []
+            for v in value:
+                acf.append(autocorrelation(v))
+            mean_acf = np.mean(acf, axis=0)
+            self.acfs[key] = mean_acf
+
+        for key, value in self.acfs.items():
+            spectrum = power_spectrum(value)
+            self.vdos[key] = spectrum[0:int(len(spectrum) / 2)][0:200]
 
 
 class Activation(object):
