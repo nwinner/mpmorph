@@ -190,6 +190,8 @@ def get_wf_pack_lammps_vasp(pack_input_set = {}, pre_relax_input_set = {}, md_in
 
     inside_box = []
     for i in box_size:
+        inside_box.append(i[0])
+    for i in box_size:
         inside_box.append(i[1]-tolerance)
 
     packing_config = []
