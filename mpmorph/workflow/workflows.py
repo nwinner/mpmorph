@@ -190,8 +190,6 @@ def get_wf_pack_lammps_vasp(pack_input_set = {}, pre_relax_input_set = {}, md_in
 
     inside_box = []
     for i in box_size:
-        inside_box.append(i[0]-tolerance)
-    for i in box_size:
         inside_box.append(i[1]-tolerance)
 
     packing_config = []
@@ -218,7 +216,7 @@ def get_wf_pack_lammps_vasp(pack_input_set = {}, pre_relax_input_set = {}, md_in
 
     lammps_input_set      = pre_relax_input_set.get('lammps_input_set') or {}
     lammps_input_filename = pre_relax_input_set.get('lammps_input_file') or 'in.lammps'
-    data_filename         = pre_relax_input_set.get('data_filename') or None
+    data_filename         = pre_relax_input_set.get('data_filename') or 'data_filename'
     lammps_cmd            = pre_relax_input_set.get('lammps_cmd') or ">>lammps_cmd<<"
     lammps_db_file        = pre_relax_input_set.get('db_file') or None
     dump_filename         = pre_relax_input_set.get('dump_filename') or None
