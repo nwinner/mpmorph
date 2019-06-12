@@ -281,12 +281,7 @@ class LammpsToVaspMD(FiretaskBase):
         fw = MDFW(structure, start_temp, end_temp, nsteps, vasp_input_set=vasp_input_set, vasp_cmd=vasp_cmd,
                   copy_vasp_outputs=copy_vasp_outputs, db_file=db_file, name='MDFW')
 
-        t = fw.tasks
-        t.append(MDAnalysisTask(time_step=time_step))
-
-        fw = Firework(tasks=t, name='MDFW')
-
-        return FWAction(additions=fw)
+        return FWAction(detours=fw)
 
 
 @explicit_serialize
@@ -295,8 +290,8 @@ class MDAnalysisTask(FireTaskBase):
     optional_params = ['time_step']
 
     def run_task(self, fw_spec):
-        calc_dir = os.getcwd()
-        calc_loc = os.path.join(calc_dir, 'XDATCAR')
+        calc_dir = get_calc_loc(True, self['calc_locs'])
+        calc_loc = os.path.join(calc_dir, 'XDATCAR.gz')
         structures = Xdatcar(calc_loc).structures
 
         rdf = RadialDistributionFunction(structures=structures)

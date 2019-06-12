@@ -242,13 +242,19 @@ def get_wf_pack_lammps_vasp(pack_input_set = {}, pre_relax_input_set = {}, md_in
     md_input_set['atom_style'] = atom_style
     t = [CopyFilesFromCalcLoc(calc_loc="PreRelaxFW", filenames=["final.data"])]
     t.append(LammpsToVaspMD(**md_input_set))
-    t.append(MDAnalysisTask())
     md_fw = Firework(tasks=t, name="MDFW", parents=[pre_relax_fw, pack_fw])
 
     fws.append(md_fw)
 
-    wfname = name or "MD-WF"
+    # -------------------------------------------------------------------- #
+    # ---------------------- ANALYSIS SECTION ---------------------------- #
+    # -------------------------------------------------------------------- #
 
+    t = MDAnalysisTask(md_input_set.get('time_step', 1))
+
+    fws.append(Firework(t, name="AnalysisTask", parents=md_fw))
+
+    wfname = name or "MD-WF"
     wf = Workflow(fws, name=wfname, metadata=metadata)
 
     return wf
