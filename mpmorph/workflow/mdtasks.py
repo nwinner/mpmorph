@@ -1,9 +1,10 @@
 from fireworks import FireTaskBase, Firework
 from mpmorph.runners.amorphous_maker import AmorphousMaker
 from mpmorph.runners.rescale_volume import RescaleVolume
-from mpmorph.analysis.md_data import parse_pressure, get_MD_data
-from mpmorph.analysis.structural_analysis import RadialDistributionFunction, get_smooth_rdfs
+from mpmorph.analysis.md_data import parse_pressure, get_MD_data, get_MD_stats, plot_md_data
+from mpmorph.analysis.structural_analysis import RadialDistributionFunction
 from mpmorph.analysis.diffusion import Diffusion
+from mpmorph.analysis.vibrations import VDOS
 from atomate.vasp.firetasks.glue_tasks import CopyVaspOutputs, get_calc_loc
 from atomate.vasp.firetasks.run_calc import RunVaspCustodian
 from atomate.common.firetasks.glue_tasks import PassCalcLocs
@@ -280,30 +281,40 @@ class LammpsToVaspMD(FiretaskBase):
         fw = MDFW(structure, start_temp, end_temp, nsteps, vasp_input_set=vasp_input_set, vasp_cmd=vasp_cmd,
                   copy_vasp_outputs=copy_vasp_outputs, db_file=db_file, name='MDFW')
 
+        t = fw.tasks
+        t.append(MDAnalysisTask(time_step=time_step))
+
+        fw = Firework(tasks=t, name='MDFW')
+
         return FWAction(additions=fw)
 
 
 @explicit_serialize
 class MDAnalysisTask(FireTaskBase):
     required_params = []
-    optional_params = []
+    optional_params = ['time_step']
 
     def run_task(self, fw_spec):
-        calc_dir = get_calc_loc(True, fw_spec["calc_locs"])["path"]
+        calc_dir = os.getcwd()
         calc_loc = os.path.join(calc_dir, 'XDATCAR')
         structures = Xdatcar(calc_loc).structures
 
         rdf = RadialDistributionFunction(structures=structures)
         rdf_dat = rdf.get_radial_distribution_functions(nproc=16)
-        rdf_smooth = get_smooth_rdfs(rdf, passes=5)
-        rdf_plt = rdf.plot_radial_distribution_functions()
+        rdf_plt = rdf.plot_radial_distribution_functions(show=False, save=True)
 
-        md_data = get_MD_data(os.path.join(calc_dir, 'OUTCAR'))
+        time_step = self.get('time_step') or 1
+        vdos = VDOS(structures)
+        vdos.calc_vdos_spectrum(time_step=time_step)
+        vdos.plot_vdos(show=False, save=True)
 
-        with open('rdf.json', 'w') as json_file:
-            json.dump(rdf_dat, json_file)
+        diffusion = Diffusion(structures, t_step=time_step, l_lim=0, ci=0.95)
+        D = {}
+        for s in structures[0].types_of_specie:
+            D[s] = diffusion.getD(s.symbol)
 
-        with open('md_data.json', 'w') as json_file:
-            json.dump(md_data, json_file)
+        md_data = get_MD_data(calc_dir)
+        md_stats = get_MD_stats(md_data)
+        plot_md_data(md_data, show=False, save=True)
 
         return FWAction()
