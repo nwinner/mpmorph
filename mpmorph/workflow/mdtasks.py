@@ -235,13 +235,14 @@ class LammpsToVaspMD(FiretaskBase):
     _fw_name = "LammpsToVasp"
     required_params = ["atom_style", "start_temp", "end_temp", "nsteps"]
     optional_params = ['time_step', 'vasp_input_set', 'user_kpoints_settings', 'vasp_cmd',
-                       'copy_vasp_outputs', 'db_file', 'name', 'parents']
+                       'copy_vasp_outputs', 'db_file', 'name', 'parents', 'spawn']
 
     def run_task(self, fw_spec):
         atom_style  = self.get('atom_style')
         start_temp  = self.get('start_temp')
         end_temp    = self.get('end_temp')
         nsteps      = self.get('nsteps')
+        spawn       = self.get('spawn') or False
 
         time_step = self.get('time_step') or 1
         vasp_cmd = self.get('vasp_cmd') or ">>vasp_cmd<<"
@@ -252,6 +253,12 @@ class LammpsToVaspMD(FiretaskBase):
         name = self.get('name') or "VaspMDFW"
         parents = self.get('parents') or None
         transmute = self.get('transmute') or None
+
+        pressure_threshold = self.get('pressure_threshold') or 5
+        max_rescales = self.get('max_rescales') or 6
+        wall_time = self.get('wall_time') or 19200
+        copy_calcs = self.get('copy_calcs') or False
+        calc_home = self.get('calc_home') or '~'
 
         logger.info("PARSING \"lammps.final\" to VASP.")
         data = LammpsData.from_file(os.path.join(os.getcwd(), self.get('final_data')),
@@ -280,6 +287,12 @@ class LammpsToVaspMD(FiretaskBase):
 
         fw = MDFW(structure, start_temp, end_temp, nsteps, vasp_input_set=vasp_input_set, vasp_cmd=vasp_cmd,
                   copy_vasp_outputs=copy_vasp_outputs, db_file=db_file, name='MDFW')
+
+        if spawn:
+            SpawnMDFWTask(pressure_threshold=pressure_threshold, max_rescales=max_rescales,
+                       wall_time=wall_time, vasp_cmd=vasp_cmd, db_file=db_file,
+                       copy_calcs=copy_calcs, calc_home=calc_home,
+                       spawn_count=0)
 
         return FWAction(detours=fw)
 
