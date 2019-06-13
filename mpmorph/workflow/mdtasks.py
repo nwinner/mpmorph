@@ -89,6 +89,7 @@ class SpawnMDFWTask(FireTaskBase):
     optional_params = ["averaging_fraction"]
 
     def run_task(self, fw_spec):
+        calc_dir = get_calc_loc(True, fw_spec["calc_locs"])["path"]
         vasp_cmd = self["vasp_cmd"]
         wall_time = self["wall_time"]
         db_file = self["db_file"]
@@ -106,7 +107,8 @@ class SpawnMDFWTask(FireTaskBase):
 
         current_dir = os.getcwd()
         averaging_fraction = self.get("averaging_fraction", 0.5)
-        p = parse_pressure("./", averaging_fraction)[0]
+        pressure = get_MD_data(calc_dir)['pressure']['val']
+        p = np.mean(pressure[int(averaging_fraction*(len(pressure)-1)):])
 
         if np.fabs(p) > pressure_threshold:
             t = []
