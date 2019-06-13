@@ -135,7 +135,7 @@ class SpawnMDFWTask(FireTaskBase):
                                    calc_home=calc_home,
                                    averaging_fraction=averaging_fraction))
             new_fw = Firework(t, name=name)
-            return FWAction(stored_data={'pressure': p}, additions=[new_fw])
+            return FWAction(stored_data={'pressure': p}, detours=[new_fw])
 
         else:
             return FWAction(stored_data={'pressure': p, 'density_calculated': True})
@@ -303,7 +303,7 @@ class MDAnalysisTask(FireTaskBase):
     optional_params = ['time_step']
 
     def run_task(self, fw_spec):
-        calc_dir = get_calc_loc(True, self['calc_locs'])
+        calc_dir = get_calc_loc(True, fw_spec["calc_locs"])["path"]
         calc_loc = os.path.join(calc_dir, 'XDATCAR.gz')
         structures = Xdatcar(calc_loc).structures
 
