@@ -113,7 +113,7 @@ class SpawnMDFWTask(FireTaskBase):
         if np.fabs(p) > pressure_threshold:
             logger.info("LOGGER: Pressure is outside of threshold: Spawning another MD Task")
             t = []
-            # Copy the VASP outputs from previos run. Very first run get its from the initial MDWF which
+            # Copy the VASP outputs from previous run. Very first run get its from the initial MDWF which
             # uses PassCalcLocs. For the rest we just specify the previous dir.
             if spawn_count==0:
                 t.append(CopyVaspOutputs(calc_dir=calc_dir, contcar_to_poscar=False))
@@ -137,7 +137,7 @@ class SpawnMDFWTask(FireTaskBase):
                                    copy_calcs=copy_calcs,
                                    calc_home=calc_home,
                                    averaging_fraction=averaging_fraction))
-            t.append(PassCalcLocs())
+            t.append(PassCalcLocs(name=name))
             new_fw = Firework(t, name=name)
             return FWAction(stored_data={'pressure': p}, detours=[new_fw])
 

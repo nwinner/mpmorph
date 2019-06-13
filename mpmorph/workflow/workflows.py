@@ -185,7 +185,7 @@ def get_wf_pack_lammps_vasp(pack_input_set = {}, pre_relax_input_set = {}, md_in
     tolerance = pack_input_set.get('tol') or 2
     charges = pack_input_set.get('charges') or None
 
-    if isinstance(box_size, float):
+    if isinstance(box_size, float) or isinstance(box_size, int):
         box_size = [(0, box_size), (0, box_size), (0, box_size)]
 
     inside_box = []
@@ -245,11 +245,6 @@ def get_wf_pack_lammps_vasp(pack_input_set = {}, pre_relax_input_set = {}, md_in
     md_fw = Firework(tasks=t, name="MDFW", parents=[pre_relax_fw, pack_fw])
 
     fws.append(md_fw)
-
-    # -------------------------------------------------------------------- #
-    # ----------------------- SPAWN SECTION ------------------------------- #
-    # -------------------------------------------------------------------- #
-
 
     # -------------------------------------------------------------------- #
     # ---------------------- ANALYSIS SECTION ---------------------------- #
