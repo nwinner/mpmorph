@@ -231,8 +231,5 @@ def autocorrelation(v, normalize=True):
         ynorm = np.sum(np.power(yunbiased, 2), axis=0)
     else:
         ynorm = np.ones(np.shape(v))
-    autocor = np.zeros(np.shape(v))
-
     autocor = signal.fftconvolve(v, v[::-1], mode='full')[len(v) - 1:] / ynorm
-
     return autocor

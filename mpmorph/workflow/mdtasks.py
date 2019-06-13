@@ -3,8 +3,7 @@ from mpmorph.runners.amorphous_maker import AmorphousMaker
 from mpmorph.runners.rescale_volume import RescaleVolume
 from mpmorph.analysis.md_data import parse_pressure, get_MD_data, get_MD_stats, plot_md_data
 from mpmorph.analysis.structural_analysis import RadialDistributionFunction
-from mpmorph.analysis.diffusion import Diffusion
-from mpmorph.analysis.vibrations import VDOS
+from mpmorph.analysis.transport import VDOS, Viscosity, Diffusion
 from atomate.vasp.firetasks.glue_tasks import CopyVaspOutputs, get_calc_loc
 from atomate.vasp.firetasks.run_calc import RunVaspCustodian
 from atomate.common.firetasks.glue_tasks import PassCalcLocs
@@ -89,7 +88,7 @@ class SpawnMDFWTask(FireTaskBase):
     optional_params = ["averaging_fraction"]
 
     def run_task(self, fw_spec):
-        calc_dir = self['calc_dir']
+        calc_dir = get_calc_loc(True, fw_spec['calc_locs'])['path'] or os.getcwd()
         vasp_cmd = self["vasp_cmd"]
         wall_time = self["wall_time"]
         db_file = self["db_file"]
@@ -105,7 +104,6 @@ class SpawnMDFWTask(FireTaskBase):
 
         name = ("spawnrun"+str(spawn_count))
 
-        current_dir = os.getcwd()
         averaging_fraction = self.get("averaging_fraction", 0.5)
         pressure = get_MD_data(calc_dir)['pressure']['val']
         p = np.mean(pressure[int(averaging_fraction*(len(pressure)-1)):])
@@ -136,6 +134,7 @@ class SpawnMDFWTask(FireTaskBase):
                                    copy_calcs=copy_calcs,
                                    calc_home=calc_home,
                                    averaging_fraction=averaging_fraction))
+            t.append(PassCalcLocs())
             new_fw = Firework(t, name=name)
             return FWAction(stored_data={'pressure': p}, detours=[new_fw])
 
@@ -232,6 +231,7 @@ class PackToLammps(FireTaskBase):
 
         return FWAction()
 
+
 @explicit_serialize
 class LammpsToVaspMD(FiretaskBase):
     _fw_name = "LammpsToVasp"
@@ -292,10 +292,9 @@ class LammpsToVaspMD(FiretaskBase):
 
         if spawn:
             t = fw.tasks
-            calc_dir = get_calc_loc(True, fw_spec["calc_locs"])["path"]
             t.append(SpawnMDFWTask(pressure_threshold=pressure_threshold, max_rescales=max_rescales,
                        wall_time=wall_time, vasp_cmd=vasp_cmd, db_file=db_file,
-                       copy_calcs=copy_calcs, calc_home=calc_home, calc_dir=calc_dir,
+                       copy_calcs=copy_calcs, calc_home=calc_home,
                        spawn_count=0))
             fw = Firework(tasks=t, name='SpawnMDFW')
 
@@ -305,29 +304,43 @@ class LammpsToVaspMD(FiretaskBase):
 @explicit_serialize
 class MDAnalysisTask(FireTaskBase):
     required_params = []
-    optional_params = ['time_step']
+    optional_params = ['time_step', 'get_rdf', 'get_diffusion', 'get_viscosity', 'get_vdos', 'get_run_data']
 
     def run_task(self, fw_spec):
+
+        get_rdf = self.get('get_rdf') or True
+        get_diffusion = self.get('get_diffusion') or True
+        get_viscosity = self.get('get_viscosity') or True
+        get_vdos = self.get('get_vdos') or True
+        get_run_data = self.get('get_run_data') or True
+        time_step = self.get('time_step') or 1
+
         calc_dir = get_calc_loc(True, fw_spec["calc_locs"])["path"]
         calc_loc = os.path.join(calc_dir, 'XDATCAR.gz')
         structures = Xdatcar(calc_loc).structures
 
-        rdf = RadialDistributionFunction(structures=structures)
-        rdf_dat = rdf.get_radial_distribution_functions(nproc=16)
-        rdf_plt = rdf.plot_radial_distribution_functions(show=False, save=True)
+        if get_rdf:
+            rdf = RadialDistributionFunction(structures=structures)
+            rdf_dat = rdf.get_radial_distribution_functions(nproc=16)
+            rdf_plt = rdf.plot_radial_distribution_functions(show=False, save=True)
 
-        time_step = self.get('time_step') or 1
-        vdos = VDOS(structures)
-        vdos.calc_vdos_spectrum(time_step=time_step)
-        vdos.plot_vdos(show=False, save=True)
+        if get_vdos:
+            vdos = VDOS(structures)
+            vdos.calc_vdos_spectrum(time_step=time_step)
+            vdos.plot_vdos(show=False, save=True)
 
-        diffusion = Diffusion(structures, t_step=time_step, l_lim=0, ci=0.95)
-        D = {}
-        for s in structures[0].types_of_specie:
-            D[s] = diffusion.getD(s.symbol)
+        if get_diffusion:
+            diffusion = Diffusion(structures, t_step=time_step, l_lim=0, ci=0.95)
+            D = {}
+            for s in structures[0].types_of_specie:
+                D[s] = diffusion.getD(s.symbol)
 
-        md_data = get_MD_data(calc_dir)
-        md_stats = get_MD_stats(md_data)
-        plot_md_data(md_data, show=False, save=True)
+        if get_viscosity:
+            viscosity = Viscosity(calc_dir).calc_viscosity()
+
+        if get_run_data:
+            md_data = get_MD_data(calc_dir)
+            md_stats = get_MD_stats(md_data)
+            plot_md_data(md_data, show=False, save=True)
 
         return FWAction()

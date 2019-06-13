@@ -502,7 +502,9 @@ class RadialDistributionFunction(object):
                     continue
                 self.RDFs[i][j] = self.RDFs[i][j] / self.n_species[
                     i[0]] / 4.0 / np.pi / r / r / self.bin_size / density_of_atom2 / self.counter
-
+            for j in range(self.n_bins):
+                if self.RDFs[i][j] < 0:
+                    self.RDFS[i][j] = 0
         if smooth:
             self.RDFs = get_smooth_rdfs(self.RDFs, passes=self.smooth)
         return self.RDFs
@@ -527,8 +529,10 @@ class RadialDistributionFunction(object):
         ax1.tick_params(which='minor', length=2, width=.5, direction='in', top=True, right=True, labelsize=14)
 
         for rdf in rdfs:
-            ax1.plot(x, rdfs[rdf])
-        plt.legend(self.get_pair_order, bbox_to_anchor=(0.975, 0.975), loc=0,
+            p = ax1.plot(x, rdfs[rdf])
+            #ax1.fill(x, rdfs[rdf], alpha=0.3, color=p[-1].get_color())
+
+        plt.legend(self.get_pair_order, bbox_to_anchor=(0.975, 0.975),
                    borderaxespad=0., prop={'family': 'sans-serif', 'size': 13}, frameon=False)
         plt.title(self.title)
         if save:
