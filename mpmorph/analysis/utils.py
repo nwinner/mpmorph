@@ -225,56 +225,14 @@ def zero_padding(sample_data):
     return N
 
 
-def autocorrelation(v):
-    # normalization
-    yunbiased = v - np.mean(v, axis=0)
-    ynorm = np.sum(np.power(yunbiased, 2), axis=0)
+def autocorrelation(v, normalize=True):
+    if normalize:
+        yunbiased = v - np.mean(v, axis=0)
+        ynorm = np.sum(np.power(yunbiased, 2), axis=0)
+    else:
+        ynorm = np.ones(np.shape(v))
     autocor = np.zeros(np.shape(v))
 
-    if isinstance(v[0], (list, tuple, np.ndarray)):
-        for i in range(len(v[0])):
-            autocor[:, i] = signal.fftconvolve(v[:, i], v[:, i][::-1], mode='full')[len(v) - 1:] / ynorm[i]
-    else:
-        autocor = signal.fftconvolve(v, v[::-1], mode='full')[len(v) - 1:] / ynorm
+    autocor = signal.fftconvolve(v, v[::-1], mode='full')[len(v) - 1:] / ynorm
+
     return autocor
-
-
-######## Save The Results to A TEXT File ########
-def save_results(fout, wavenumber, intensity):
-    title = ("Wavenumber", "IR Intensity", "cm^-1", "a.u.")
-    with open(fout, "w") as fw:
-        np.savetxt(fout, np.c_[wavenumber[0:5000], intensity[0:5000]],
-                   fmt="%10.5f %15.5e",
-                   header="{0:>10}{1:>16}\n{2:^11}{3:^20}".format(*title),
-                   comments='')
-
-
-######## Plot The Spectrum by Using Matplotlib module ########
-def visualization(D_p, DACF, wavenumber, intensity):
-    plt.subplot(3, 1, 1)
-    L1 = np.arange(len(D_p))
-    plt.plot(L1, D_p[:, 0], color='red', linewidth=1.5)
-    plt.plot(L1, D_p[:, 1], color='green', linewidth=1.5)
-    plt.plot(L1, D_p[:, 2], color='blue', linewidth=1.5)
-    plt.axis([0, len(D_p), 1.1 * np.min(D_p), 1.1 * np.max(D_p)], fontsize=15)
-    plt.xlabel("Data Points", fontsize=15)
-    plt.ylabel("Derivative of Dipole (a.u.)", fontsize=15)
-
-    plt.subplot(3, 1, 2)
-    L2 = np.arange(len(DACF))
-    plt.plot(L2, DACF[:, 0], color='red', linewidth=1.5)
-    plt.plot(L2, DACF[:, 1], color='green', linewidth=1.5)
-    plt.plot(L2, DACF[:, 2], color='blue', linewidth=1.5)
-    plt.axis([0, len(DACF), 1.1 * np.min(DACF), 1.1 * np.max(DACF)], fontsize=15)
-    plt.xlabel("Data Points", fontsize=15)
-    plt.ylabel("DACF (a.u.)", fontsize=15)
-
-    plt.subplot(3, 1, 3)
-    plt.plot(wavenumber, intensity, color='black', linewidth=1.5)
-    plt.axis([0, 4000,
-              -1.1 * np.min(intensity), 1.1 * np.max(intensity)],
-             fontsize=15)
-    plt.xlabel("Wavenumber (cm$^{-1}$)", fontsize=15)
-    plt.ylabel("Intensity (a.u.)", fontsize=15)
-    plt.subplots_adjust(hspace=0.5)
-    plt.show()

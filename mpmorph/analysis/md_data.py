@@ -26,7 +26,7 @@ def get_MD_data(dir):
     etot     = []
     temp     = []
     ekin     = []
-    time     = np.arange(0, v.nionic_steps, v.parameters['POTIM'])
+    time     = np.arange(0, v.nionic_steps)*v.parameters['POTIM']
     for step in o.ionic_steps:
         ekin.append(step['EK'])
         etot.append(step['E0'])

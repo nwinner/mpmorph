@@ -5,6 +5,7 @@ import pandas as pd
 from matplotlib import pyplot as plt
 from pymatgen.core.periodic_table import Element
 from pymatgen.io.vasp.outputs import Vasprun
+from astropy.stats import bootstrap
 import os
 
 __author__ = "Nicholas Winner"
@@ -18,6 +19,7 @@ __date__ = ""
 from mpmorph.analysis.utils import autocorrelation, power_spectrum, calc_derivative, xdatcar_to_df
 
 boltzmann = 8.6173303e-5       # eV/K
+boltzmann_SI = 1.38064852e-23
 plank     = 4.135667e-15       # eV/s
 plank_ps  = plank / 1e12       # eV/ps
 hbar      = plank/(2*np.pi)    # eV/s
@@ -208,40 +210,33 @@ class Viscosity(object):
         self.temp = v.parameters['TEBEG']
         self.nsteps = v.nionic_steps
         self.acf = []
-
         self.shear_stresses = []
+
+        self.acfs = []
+        self.norm_acfs = []
+
+        self.acf = None
+        self.tao = None
+        self.ntrials = None
+
+        print(v.structures[0].composition.fractional_composition)
+
+    def calc_viscosity(self, formula_units):
         for i in range(3):
             for j in range(3):
                 self.shear_stresses.append([s[i][j] * 100000000 for s in self.stresses])
                 self.acfs.append(autocorrelation(self.shear_stresses[-1], normalize=False))
-        acf_xy = autocorrelation(stresses_xy, normalize=False)
-        acf_xz = autocorrelation(stresses_xz, normalize=False)
+                self.norm_acfs.append(autocorrelation(self.shear_stresses[-1], normalize=True))
 
-        acf_yx = autocorrelation(stresses_yx, normalize=False)
-        acf_yz = autocorrelation(stresses_yz, normalize=False)
+        self.acf = np.mean(self.acfs)
+        self.tao = np.trapz( np.mean(self.norm_acfs, axis=0), np.arange(0, self.nsteps, self.time_step))
+        self.ntrials = int(self.nsteps / (2 * self.tao))
 
-        acf_zx = autocorrelation(stresses_zx, normalize=False)
-        acf_zy = autocorrelation(stresses_zy, normalize=False)
+        boots = bootstrap(self.acf, bootnum=self.ntrials)
 
-        self.acf = [acf_xy, acf_xz, acf_yx, acf_yz, acf_zx, ]
+        visc = []
+        std  = []
+        for boot in boots:
+            visc.append(self.volume*(1e-30)*np.trapz(boot,(1e-15)*np.arange(0,self.nsteps,self.time_step))/(formula_units*self.temp*boltzmann_SI))
 
-    def calc_viscosity(self, formula_units):
-
-
-
-        acf = np.mean([acf_xy, acf_xz, acf_yx, acf_zy], axis=0)
-
-        visc = self.volume*(1e-30)*np.trapz(acf,(1e-15)*np.arange(0, 3000, self.time_step))/(formula_units*self.temp*1.38064852e-23)
-
-        plt.plot(acf)
-        plt.show()
-
-    @property
-    def ntrials(self):
-        return int(len(self.nsteps) / (2 * self.get_tao()))
-
-    def get_tao(self):
-        pass
-
-    def plot_viscosity(self, show=True, save=False):
-        pass
+        return {'viscosity': np.mean(visc), 'StdDev': np.std(visc)}
