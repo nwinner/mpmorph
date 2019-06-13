@@ -99,7 +99,7 @@ class SpawnMDFWTask(FireTaskBase):
         copy_calcs = self["copy_calcs"]
 
         if spawn_count > max_rescales:
-            # TODO: Log max rescale reached info.
+            logger.info("WARNING: The max number of rescales has been reached... stopping density search.")
             return FWAction(defuse_workflow=True)
 
         name = ("spawnrun"+str(spawn_count))
@@ -108,7 +108,10 @@ class SpawnMDFWTask(FireTaskBase):
         pressure = get_MD_data(calc_dir)['pressure']['val']
         p = np.mean(pressure[int(averaging_fraction*(len(pressure)-1)):])
 
+        logger.info("LOGGER: Current pressure is {}".format(p))
+
         if np.fabs(p) > pressure_threshold:
+            logger.info("LOGGER: Pressure is outside of threshold: Spawning another MD Task")
             t = []
             # Copy the VASP outputs from previos run. Very first run get its from the initial MDWF which
             # uses PassCalcLocs. For the rest we just specify the previous dir.
@@ -118,8 +121,8 @@ class SpawnMDFWTask(FireTaskBase):
                 t.append(CopyVaspOutputs(calc_dir=calc_dir, contcar_to_poscar=True))
 
             t.append(RescaleVolumeTask(initial_pressure=p*1000.0, initial_temperature=1))
-            t.append(RunVaspCustodian(vasp_cmd=vasp_cmd, gamma_vasp_cmd=">>gamma_vasp_cmd<<",
-                                      handler_group="md", wall_time=wall_time, gzip_output=False))
+            t.append(RunVaspCustodian(vasp_cmd=vasp_cmd, gamma_vasp_cmd=">>vasp_gam<<",
+                                      handler_group="md", wall_time=wall_time))
             # Will implement the database insertion
             # t.append(VaspToDbTask(db_file=db_file,
             #                       additional_fields={"task_label": "density_adjustment"}))
@@ -139,6 +142,7 @@ class SpawnMDFWTask(FireTaskBase):
             return FWAction(stored_data={'pressure': p}, detours=[new_fw])
 
         else:
+            logger.info("LOGGER: Pressure is within the threshold: Stopping Spawns.")
             return FWAction(stored_data={'pressure': p, 'density_calculated': True})
 
 
