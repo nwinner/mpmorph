@@ -85,11 +85,11 @@ class SpawnMDFWTask(FireTaskBase):
     Decides if a new MD calculation should be spawned or if density is found. If so, spawns a new calculation.
     """
     required_params = ["pressure_threshold", "max_rescales", "vasp_cmd", "wall_time",
-                       "db_file", "spawn_count", "copy_calcs", "calc_home"]
+                       "db_file", "spawn_count", "copy_calcs", "calc_home", "calc_dir"]
     optional_params = ["averaging_fraction"]
 
     def run_task(self, fw_spec):
-        calc_dir = get_calc_loc(True, fw_spec["calc_locs"])["path"]
+        calc_dir = self['calc_dir']
         vasp_cmd = self["vasp_cmd"]
         wall_time = self["wall_time"]
         db_file = self["db_file"]
@@ -292,9 +292,10 @@ class LammpsToVaspMD(FiretaskBase):
 
         if spawn:
             t = fw.tasks
+            calc_dir = get_calc_loc(True, fw_spec["calc_locs"])["path"]
             t.append(SpawnMDFWTask(pressure_threshold=pressure_threshold, max_rescales=max_rescales,
                        wall_time=wall_time, vasp_cmd=vasp_cmd, db_file=db_file,
-                       copy_calcs=copy_calcs, calc_home=calc_home,
+                       copy_calcs=copy_calcs, calc_home=calc_home, calc_dir=calc_dir,
                        spawn_count=0))
             fw = Firework(tasks=t, name='SpawnMDFW')
 
