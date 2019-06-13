@@ -4,6 +4,8 @@ import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
 from pymatgen.core.periodic_table import Element
+from pymatgen.io.vasp.outputs import Vasprun
+import os
 
 __author__ = "Nicholas Winner"
 __copyright__ = "None"
@@ -192,3 +194,54 @@ class VDOS(object):
         if show:
             plt.show()
         return plt
+
+class Viscosity(object):
+
+    def __init__(self, vasprun):
+        v = Vasprun(vasprun)
+
+        self.volume   = v.structures[0].volume
+        self.stresses = []
+        for step in v.ionic_steps:
+            self.stresses.append(step['stress'])
+        self.time_step = v.parameters['POTIM']
+        self.temp = v.parameters['TEBEG']
+        self.nsteps = v.nionic_steps
+        self.acf = []
+
+        self.shear_stresses = []
+        for i in range(3):
+            for j in range(3):
+                self.shear_stresses.append([s[i][j] * 100000000 for s in self.stresses])
+                self.acfs.append(autocorrelation(self.shear_stresses[-1], normalize=False))
+        acf_xy = autocorrelation(stresses_xy, normalize=False)
+        acf_xz = autocorrelation(stresses_xz, normalize=False)
+
+        acf_yx = autocorrelation(stresses_yx, normalize=False)
+        acf_yz = autocorrelation(stresses_yz, normalize=False)
+
+        acf_zx = autocorrelation(stresses_zx, normalize=False)
+        acf_zy = autocorrelation(stresses_zy, normalize=False)
+
+        self.acf = [acf_xy, acf_xz, acf_yx, acf_yz, acf_zx, ]
+
+    def calc_viscosity(self, formula_units):
+
+
+
+        acf = np.mean([acf_xy, acf_xz, acf_yx, acf_zy], axis=0)
+
+        visc = self.volume*(1e-30)*np.trapz(acf,(1e-15)*np.arange(0, 3000, self.time_step))/(formula_units*self.temp*1.38064852e-23)
+
+        plt.plot(acf)
+        plt.show()
+
+    @property
+    def ntrials(self):
+        return int(len(self.nsteps) / (2 * self.get_tao()))
+
+    def get_tao(self):
+        pass
+
+    def plot_viscosity(self, show=True, save=False):
+        pass
