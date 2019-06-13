@@ -289,10 +289,12 @@ class LammpsToVaspMD(FiretaskBase):
                   copy_vasp_outputs=copy_vasp_outputs, db_file=db_file, name='MDFW')
 
         if spawn:
-            SpawnMDFWTask(pressure_threshold=pressure_threshold, max_rescales=max_rescales,
+            t = fw.tasks
+            t.append(SpawnMDFWTask(pressure_threshold=pressure_threshold, max_rescales=max_rescales,
                        wall_time=wall_time, vasp_cmd=vasp_cmd, db_file=db_file,
                        copy_calcs=copy_calcs, calc_home=calc_home,
-                       spawn_count=0)
+                       spawn_count=0))
+            fw = Firework(tasks=t, name='SpawnMDFW')
 
         return FWAction(detours=fw)
 
