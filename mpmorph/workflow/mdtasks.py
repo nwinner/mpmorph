@@ -137,6 +137,7 @@ class SpawnMDFWTask(FireTaskBase):
                                    copy_calcs=copy_calcs,
                                    calc_home=calc_home,
                                    averaging_fraction=averaging_fraction))
+            t.append(PassCalcLocs(name=name))
             new_fw = Firework(t, name=name)
             return FWAction(stored_data={'pressure': p}, detours=[new_fw])
 
@@ -298,7 +299,7 @@ class LammpsToVaspMD(FiretaskBase):
             t.append(SpawnMDFWTask(pressure_threshold=pressure_threshold, max_rescales=max_rescales,
                        wall_time=wall_time, vasp_cmd=vasp_cmd, db_file=db_file,
                        copy_calcs=copy_calcs, calc_home=calc_home,
-                       spawn_count=0))
+                       spawn_count=1))
             fw = Firework(tasks=t, name='SpawnMDFW')
 
         return FWAction(detours=fw)
