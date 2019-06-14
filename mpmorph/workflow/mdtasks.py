@@ -137,7 +137,6 @@ class SpawnMDFWTask(FireTaskBase):
                                    copy_calcs=copy_calcs,
                                    calc_home=calc_home,
                                    averaging_fraction=averaging_fraction))
-            t.append(PassCalcLocs(name=name))
             new_fw = Firework(t, name=name)
             return FWAction(stored_data={'pressure': p}, detours=[new_fw])
 
