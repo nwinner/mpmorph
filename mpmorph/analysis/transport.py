@@ -59,7 +59,7 @@ class Spectrum(object):
 
         data = self.data[['dipole_x', 'dipole_y', 'dipole_z']]
 
-        D_p  = np.mean( diff(data.values) , axis=1)  # derivative of dipole
+        D_p  = np.mean( diff(data.values) , axis=1)    # derivative of dipole
         DACF = autocorrelation(D_p)                    # Dipole derivative autocorrelation function
         yfft = power_spectrum(DACF)                    # power spectrum of the dipole derivative ACF
 

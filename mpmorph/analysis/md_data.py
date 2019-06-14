@@ -6,6 +6,52 @@ from mpmorph.analysis.utils import autocorrelation
 from pymatgen.io.vasp.outputs import Oszicar, Vasprun
 from matplotlib import pyplot as plt
 
+class MD_Data:
+
+    def __init__(self, dir):
+
+        if os.path.isfile(os.path.join(dir, 'vasprun.xml.gz')):
+            v = Vasprun(os.path.join(dir, 'vasprun.xml.gz'))
+        elif os.path.isfile(os.path.join(dir, 'vasprun.xml')):
+            v = Vasprun(os.path.join(dir, 'vasprun.xml'))
+        else:
+            raise FileNotFoundError
+
+        self.md_data = {}
+        self.md_acfs = {}
+        self.md_stats = {}
+        self.temp = v.parameters['TEEND']
+        self.nsteps = v.nionic_steps
+        self.time = np.arange(0, self.nsteps) * v.parameters['POTIM']
+
+    def get_md_data(self):
+
+        pressure = []
+        etot = []
+        temp = []
+        ekin = []
+        temp = [self.temp for i in self.nsteps]
+
+        for step in o.ionic_steps:
+            ekin.append(step['EK'])
+            etot.append(step['E0'])
+        for i, step in enumerate(v.ionic_steps):
+            stress = step['stress']
+            kinP = (2 / 3) * ekin[i]
+            pressure.append((1 / 3) * np.trace(stress) + kinP)
+
+        self.md_data = {'pressure': pressure, 'etot': etot, 'ekin': ekin, 'temp': temp}
+        self.md_acfs = {'pressure': autocorrelation(pressure, normalize=True),
+                        'etot': autocorrelation(etot, normalize=True),
+                        'ekin': autocorrelation(ekin, normalize=True),
+                        'temp': autocorrelation(temp, normalize=True)}
+
+    def get_md_stats(self):
+        stats = {}
+        for k, v in self.md_data.items():
+            stats[k] = {'Mean': np.mean(v), 'StdDev': np.std(v),
+                        'Relaxation time': np.trapz(self.md_acfs[k], self.time)}
+        return stats
 
 def get_MD_data(dir):
     if os.path.isfile(os.path.join(dir, 'vasprun.xml.gz')):
