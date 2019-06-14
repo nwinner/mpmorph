@@ -1,6 +1,7 @@
 from __future__ import division, unicode_literals
 
 import os
+import math
 import numpy as np
 import pandas as pd
 from scipy import stats
@@ -28,8 +29,8 @@ hbar      = plank/(2*np.pi)    # eV/s
 hbar_ps   = plank_ps/(2*np.pi) # eV/ps
 
 c     = 2.9979245899e10  # speed of light in vacuum in [cm/s], from Wikipedia.
-kB    = 0.6950347  # Boltzman constant in [cm^-1/K], from Wikipedia.
-h_bar = 6.283185  # Reduced Planck constant in atomic unit, where h = 2*pi
+boltzmann_wn = 0.6950347  # Boltzman constant in [cm^-1/K], from Wikipedia.
+hbar_wn = 5.29e-12 # Planks reduced constant in [cm^-1/s]
 
 
 class Spectrum(object):
@@ -42,7 +43,7 @@ class Spectrum(object):
         self.D_p = None
         self.DACF = None
 
-    def calc_ir_spectrum(self, time_step=1):
+    def calc_ir_spectrum(self, time_step=1, QCF=None, T=None):
         """
         Calculate the IR spectrum from the dipole autocorrelation function.
 
@@ -63,11 +64,22 @@ class Spectrum(object):
         yfft = power_spectrum(DACF)                    # power spectrum of the dipole derivative ACF
 
         wavenumber = np.fft.fftfreq(len(yfft), delta_t * c)[0:int(len(yfft) / 2)]  # Wavenumber in units of cm^-1
-        prefactor = 1
+
+        if QCF == 'Harmonic':
+            prefactor = (hbar_wn*wavenumber/(boltzmann_wn*T))/(1-np.exp(-(hbar_wn*wavenumber/(boltzmann_wn*T))))
+            for i, p in enumerate(prefactor):
+                if math.isnan(p):
+                    prefactor[i] = 0
+        elif QCF == 'Schofield':
+            prefactor = np.exp(.5*(hbar_wn*wavenumber/(boltzmann_wn*T)))
+            for i, p in enumerate(prefactor):
+                if math.isnan(p):
+                    prefactor[i] = 0
+        else:
+            prefactor = 1
+
         intensity = prefactor*yfft[0:int(len(yfft) / 2)]
         intensity = intensity/np.max(intensity)
-
-        # TODO: Create pre-factor
 
         self.D_p = D_p
         self.DACF = DACF
@@ -83,7 +95,7 @@ class Spectrum(object):
         self.calc_raman_spectrum()
 
     def plot_ir(self):
-
+        font = {'fontname': 'Times New Roman'}
         D_p = self.D_p
         DACF = self.DACF
         wavenumber = self.ir_spectrum['wavenumber']
@@ -91,18 +103,27 @@ class Spectrum(object):
 
         fig, axs = plt.subplots(2)
 
+        axs[0].minorticks_on()
+        axs[0].tick_params(which='major', length=10, width=1, direction='in', top=True, right=True, labelsize=14)
+        axs[0].tick_params(which='minor', length=4, width=1, direction='in', top=True, right=True, labelsize=14)
+
+        axs[1].minorticks_on()
+        axs[1].tick_params(which='major', length=10, width=1, direction='in', top=True, right=True, labelsize=14)
+        axs[1].tick_params(which='minor', length=4, width=1, direction='in', top=True, right=True, labelsize=14)
+
         L2 = np.arange(len(DACF))
         axs[0].plot(L2, DACF, color='red', linewidth=1.5)
-        axs[0].axis([0, len(DACF), 1.1 * np.min(DACF), 1.1 * np.max(DACF)], fontsize=15)
-        axs[0].set_xlabel("Data Points", fontsize=15)
-        axs[0].set_ylabel("Dipole Autocorrelation Function (a.u.)", fontsize=15)
+        axs[0].axis([0, len(DACF), 1.1 * np.min(DACF), 1.1 * np.max(DACF)], fontsize=15, **font)
+        axs[0].set_xlabel("Data Points", fontsize=15, **font)
+        axs[0].set_ylabel("Dipole Autocorrelation Function (a.u.)", fontsize=15, **font)
 
-        axs[1].plot(wavenumber, intensity, color='black', linewidth=1.5)
+        p = axs[1].plot(wavenumber, intensity, color='black', linewidth=1.5)
+        axs[1].fill(wavenumber, intensity, alpha=0.3, color=p[-1].get_color())
         axs[1].axis([0, 4000,
-                  -1.1 * np.min(intensity), 1.1 * np.max(intensity)],
-                 fontsize=15)
-        axs[1].set_xlabel("Wavenumber (cm$^{-1}$)", fontsize=15)
-        axs[1].set_ylabel("Intensity (a.u.)", fontsize=15)
+                  -.08 * np.max(intensity), 1.1 * np.max(intensity)],
+                 fontsize=15, **font)
+        axs[1].set_xlabel("Wavenumber (cm$^{-1}$)", fontsize=15, **font)
+        axs[1].set_ylabel("Intensity (a.u.)", fontsize=15, **font)
         plt.show()
 
     def to_csv(self):
@@ -356,6 +377,11 @@ class VDOS(object):
     def __init__(self, input):
         if isinstance(input, Xdatcar):
             self.positions = xdatcar_to_df(input)
+        elif isinstance(input, list):
+            try:
+                self.positions = xdatcar_to_df(input)
+            except:
+                raise TypeError("ERROR: You have provided a list of objects not recognized by VDOS")
         elif os.path.isfile(input):
             self.positions = xdatcar_to_df(input)
         elif os.path.isdir(input):
@@ -364,9 +390,9 @@ class VDOS(object):
             elif os.path.isfile(os.path.join(input, 'XDATCAR')):
                 self.positions = xdatcar_to_df(os.path.join(input, 'XDATCAR'))
             else:
-                raise FileNotFoundError("Could not located XDATCAR in the provided file.")
+                raise FileNotFoundError("ERROR: Could not located XDATCAR in the provided file.")
         else:
-            raise TypeError("The provided input is either not and XDATCAR object ",
+            raise TypeError("ERROR: The provided input is either not and XDATCAR object ",
                             "or is not a path to an XDATCAR file")
 
         self.vel  = {}
@@ -408,6 +434,14 @@ class VDOS(object):
 
     def plot_vdos(self, show=True, save=False):
         fig, axs = plt.subplots(2)
+
+        axs[0].minorticks_on()
+        axs[0].tick_params(which='major', length=8, width=1, direction='in', top=True, right=True, labelsize=14)
+        axs[0].tick_params(which='minor', length=2, width=.5, direction='in', top=True, right=True, labelsize=14)
+
+        axs[1].minorticks_on()
+        axs[1].tick_params(which='major', length=8, width=1, direction='in', top=True, right=True, labelsize=14)
+        axs[1].tick_params(which='minor', length=2, width=.5, direction='in', top=True, right=True, labelsize=14)
 
         for k,v in self.acfs.items():
             axs[0].plot(v, label=k)
