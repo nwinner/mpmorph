@@ -252,7 +252,7 @@ class LammpsToVaspMD(FiretaskBase):
         spawn       = self.get('spawn') or False
 
         time_step = self.get('time_step') or 1
-        vasp_cmd = self.get('vasp_cmd') or ">>vasp_cmd<<"
+        vasp_cmd = self.get('vasp_cmd') or ">>vasp_gam<<"
         copy_vasp_outputs = self.get('copy_vasp_outputs') or False
         user_incar_settings = self.get('user_incar_settings') or {}
         user_kpoints_settings = self.get('user_kpoints_settings') or None
@@ -349,3 +349,23 @@ class MDAnalysisTask(FireTaskBase):
             plot_md_data(md_data, show=False, save=True)
 
         return FWAction()
+
+@explicit_serialize
+class TransmuteTask(FireTaskBase):
+
+    required_params = ['structure', 'species']
+    optional_params = []
+
+    def run_task(self, fw_spec):
+
+        structure = self.get('structure')
+        species = self.get('species')
+
+        sites = structure.sites
+        indices = []
+        for i, s in enumerate(sites):
+            if s.specie.symbol == species[0]:
+                indices.append(i)
+        index = random.choice(indices)
+        structure.replace(index, species=species[1],
+                          properties={'charge': Specie(species[1]).oxi_state})

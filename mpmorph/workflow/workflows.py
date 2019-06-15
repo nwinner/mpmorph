@@ -206,19 +206,14 @@ def get_wf_pack_lammps_vasp(pack_input_set = {}, pre_relax_input_set = {}, md_in
 
     t = pack_fw.tasks
     t.append(PackToLammps(atom_style=atom_style, box_size=box_size, charges=charges))
-    pack_fw = Firework(tasks=t, parents=None, name="PackFW")
-
-    fws.append(pack_fw)
 
     # -------------------------------------------------------------------- #
     # ----------------------- LAMMPS SECTION ----------------------------- #
     # -------------------------------------------------------------------- #
 
-
-
     lammps_input_set      = pre_relax_input_set.get('lammps_input_set') or {}
     lammps_input_filename = pre_relax_input_set.get('lammps_input_file') or 'in.lammps'
-    data_filename         = pre_relax_input_set.get('data_filename') or 'data_filename'
+    data_filename         = pre_relax_input_set.get('data_filename') or 'lammps.data'
     lammps_cmd            = pre_relax_input_set.get('lammps_cmd') or ">>lammps_cmd<<"
     lammps_db_file        = pre_relax_input_set.get('db_file') or None
     dump_filename         = pre_relax_input_set.get('dump_filename') or None
@@ -228,21 +223,15 @@ def get_wf_pack_lammps_vasp(pack_input_set = {}, pre_relax_input_set = {}, md_in
                          parents=None, name="PreRelaxFW", db_file=lammps_db_file,
                          log_filename="log.lammps", dump_filename=dump_filename)
 
-    t = [CopyFilesFromCalcLoc(calc_loc="PackFW", filenames=["lammps.data"])]
     t.extend(pre_relax_fw.tasks)
-    t.append(PassCalcLocs(name="PreRelaxFW"))
-    pre_relax_fw = Firework(tasks=t, parents=pack_fw, name="PreRelaxFW")
-
-    fws.append(pre_relax_fw)
 
     # -------------------------------------------------------------------- #
     # ----------------------- VASP SECTION ------------------------------- #
     # -------------------------------------------------------------------- #
 
     md_input_set['atom_style'] = atom_style
-    t = [CopyFilesFromCalcLoc(calc_loc="PreRelaxFW", filenames=["final.data"])]
     t.append(LammpsToVaspMD(**md_input_set))
-    md_fw = Firework(tasks=t, name="MDFW", parents=[pre_relax_fw, pack_fw])
+    md_fw = Firework(tasks=t, name="MDFW", parents=None)
 
     fws.append(md_fw)
 
