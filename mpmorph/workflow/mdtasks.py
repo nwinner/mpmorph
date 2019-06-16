@@ -7,6 +7,7 @@ from mpmorph.analysis.transport import VDOS, Viscosity, Diffusion
 from atomate.vasp.firetasks.glue_tasks import CopyVaspOutputs, get_calc_loc
 from atomate.vasp.firetasks.run_calc import RunVaspCustodian
 from atomate.common.firetasks.glue_tasks import PassCalcLocs
+from fireworks.user_objects.firetasks.script_task import ScriptTask
 from pymatgen.io.vasp.outputs import Xdatcar
 from pymatgen.core.structure import Structure
 import shutil
@@ -85,7 +86,7 @@ class SpawnMDFWTask(FireTaskBase):
     """
     required_params = ["pressure_threshold", "max_rescales", "vasp_cmd", "wall_time",
                        "db_file", "spawn_count", "copy_calcs", "calc_home"]
-    optional_params = ["averaging_fraction"]
+    optional_params = ["averaging_fraction", 'production', 'queueadapter']
 
     def run_task(self, fw_spec):
         calc_dir = get_calc_loc(True, fw_spec['calc_locs'])['path'] or os.getcwd()
@@ -97,6 +98,8 @@ class SpawnMDFWTask(FireTaskBase):
         spawn_count = self["spawn_count"]
         calc_home = self["calc_home"]
         copy_calcs = self["copy_calcs"]
+        production = self['production'] or False
+        queueadapter = self['queueadapter'] or {}
 
         if spawn_count > max_rescales:
             logger.info("WARNING: The max number of rescales has been reached... stopping density search.")
@@ -136,15 +139,54 @@ class SpawnMDFWTask(FireTaskBase):
                                    spawn_count=spawn_count+1,
                                    copy_calcs=copy_calcs,
                                    calc_home=calc_home,
-                                   averaging_fraction=averaging_fraction))
+                                   averaging_fraction=averaging_fraction,
+                                   queueadapter=queueadapter,
+                                   production=production))
             t.append(PassCalcLocs(name=name))
             new_fw = Firework(t, name=name)
             return FWAction(stored_data={'pressure': p}, detours=[new_fw])
 
         else:
-            logger.info("LOGGER: Pressure is within the threshold: Stopping Spawns.")
-            return FWAction(stored_data={'pressure': p, 'density_calculated': True})
+            if production:
+                if spawn_count >= 0:
+                    logger.info("LOGGER: Pressure is within the threshold: Spawning a final",
+                                " production run.")
 
+                    t = []
+
+                    t.append(CopyVaspOutputs(calc_dir=calc_dir, contcar_to_poscar=True))
+
+                    # TODO This way of switching to a production run is pretty dreadful
+                    # TODO I am just keeping it as a bandaid for my purposes
+                    t.append(ScriptTask("sed -i 's/NSW.*/NSW=5000/g' INCAR"))
+
+                    t.append(RunVaspCustodian(vasp_cmd=vasp_cmd, gamma_vasp_cmd=">>vasp_gam<<",
+                                              handler_group="md", wall_time=wall_time))
+                    # Will implement the database insertion
+                    # t.append(VaspToDbTask(db_file=db_file,
+                    #                       additional_fields={"task_label": "density_adjustment"}))
+                    if copy_calcs:
+                        t.append(CopyCalsHome(calc_home=calc_home, run_name=name))
+                    t.append(SpawnMDFWTask(pressure_threshold=pressure_threshold,
+                                           max_rescales=max_rescales,
+                                           wall_time=wall_time,
+                                           vasp_cmd=vasp_cmd,
+                                           db_file=db_file,
+                                           spawn_count=-1,
+                                           copy_calcs=copy_calcs,
+                                           calc_home=calc_home,
+                                           averaging_fraction=averaging_fraction,
+                                           production=production,
+                                           queueadapter=queueadapter))
+                    t.append(PassCalcLocs(name=name))
+                    new_fw = Firework(t, name=name)
+
+                    return FWAction(stored_data={'pressure': p, 'density_calculated': True}, detours=[new_fw],
+                                    update_spec={'_queueadapter': queueadapter})
+                logger.info("LOGGER: Production run completed. ")
+            else:
+                logger.info("LOGGER: Pressure is within the threshold: Stopping Spawns.")
+            return FWAction(stored_data={'pressure': p, 'density_calculated': True})
 
 @explicit_serialize
 class RescaleVolumeTask(FireTaskBase):
@@ -293,7 +335,7 @@ class LammpsToVaspMD(FiretaskBase):
             vasp_input_set = vasp_input_set.from_dict(v)
 
         fw = MDFW(structure, start_temp, end_temp, nsteps, vasp_input_set=vasp_input_set, vasp_cmd=vasp_cmd,
-                  copy_vasp_outputs=copy_vasp_outputs, db_file=db_file, name='MDFW')
+                  copy_vasp_outputs=copy_vasp_outputs, db_file=db_file, name='MDFW', wall_time=wall_time)
 
         if spawn:
             t = fw.tasks
