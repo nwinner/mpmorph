@@ -3,7 +3,7 @@ from atomate.vasp.fireworks.core import MDFW, OptimizeFW, StaticFW
 from mpmorph.workflow.mdtasks import SpawnMDFWTask, CopyCalsHome
 from mpmorph.runners.amorphous_maker import AmorphousMaker
 from mpmorph.analysis.structural_analysis import get_sample_structures
-from atomate.vasp.firetasks.glue_tasks import
+from atomate.vasp.firetasks.glue_tasks import CopyVaspOutputs
 from atomate.vasp.firetasks.run_calc import RunVaspCustodian
 from pymatgen.core.periodic_table import Element
 from pymatgen.core.structure import Molecule
