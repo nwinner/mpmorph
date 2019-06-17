@@ -233,6 +233,7 @@ def get_wf_pack_lammps_vasp(pack_input_set = {}, pre_relax_input_set = {}, md_in
 
     final_data = md_input_set.get('final_data') or 'final.data'
     vasp_cmd = md_input_set.get('vasp_cmd') or ">>vasp_gam<<"
+    db_file = md_input_set.get('db_file') or None
 
     pressure_threshold = md_input_set.get('pressure_threshold') or 5
     max_rescales = md_input_set.get('max_rescales') or 6
@@ -245,8 +246,9 @@ def get_wf_pack_lammps_vasp(pack_input_set = {}, pre_relax_input_set = {}, md_in
                                          vasp_input_params=md_input_set, atom_style=atom_style))
 
     t.append(SpawnMDFWTask(pressure_threshold=pressure_threshold, max_rescales=max_rescales,
-                           wall_time=wall_time, vasp_cmd=vasp_cmd,
-                           copy_calcs=copy_calcs, production=production))
+                           wall_time=wall_time, vasp_cmd=vasp_cmd, db_file=db_file,
+                           copy_calcs=copy_calcs, production=production, spawn_count=0,
+                           calc_home='~'))
 
     md_fw = Firework(tasks=t, name="SpawnMDFW", parents=None)
 
