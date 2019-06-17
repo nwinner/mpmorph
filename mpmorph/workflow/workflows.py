@@ -242,7 +242,7 @@ def get_wf_pack_lammps_vasp(pack_input_set = {}, pre_relax_input_set = {}, md_in
     production = md_input_set.get('production') or False
 
     t.append(WriteVaspFromLammpsAndIOSet(vasp_input_set="MITMDSet", structure_loc=final_data,
-                                         vasp_input_params=md_input_set), atom_style=atom_style)
+                                         vasp_input_params=md_input_set, atom_style=atom_style))
 
     t.append(SpawnMDFWTask(pressure_threshold=pressure_threshold, max_rescales=max_rescales,
                            wall_time=wall_time, vasp_cmd=vasp_cmd,
