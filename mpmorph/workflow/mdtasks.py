@@ -6,7 +6,7 @@ from mpmorph.analysis.structural_analysis import RadialDistributionFunction
 from mpmorph.analysis.transport import VDOS, Viscosity, Diffusion
 from atomate.vasp.firetasks.glue_tasks import CopyVaspOutputs, get_calc_loc
 from atomate.vasp.firetasks.run_calc import RunVaspCustodian
-from atomate.common.firetasks.glue_tasks import PassCalcLocs, PassResults
+from atomate.common.firetasks.glue_tasks import PassCalcLocs
 from atomate.vasp.firetasks.write_inputs import WriteVaspFromIOSet
 from fireworks.user_objects.firetasks.script_task import ScriptTask
 from pymatgen.io.vasp.outputs import Xdatcar, Vasprun
