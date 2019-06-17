@@ -7,6 +7,7 @@ from mpmorph.analysis.transport import VDOS, Viscosity, Diffusion
 from atomate.vasp.firetasks.glue_tasks import CopyVaspOutputs, get_calc_loc
 from atomate.vasp.firetasks.run_calc import RunVaspCustodian
 from atomate.common.firetasks.glue_tasks import PassCalcLocs
+from atomate.vasp.firetasks.write_inputs import WriteVaspFromIOSet
 from fireworks.user_objects.firetasks.script_task import ScriptTask
 from pymatgen.io.vasp.outputs import Xdatcar
 from pymatgen.core.structure import Structure
@@ -86,7 +87,7 @@ class SpawnMDFWTask(FireTaskBase):
     """
     required_params = ["pressure_threshold", "max_rescales", "vasp_cmd", "wall_time",
                        "db_file", "spawn_count", "copy_calcs", "calc_home"]
-    optional_params = ["averaging_fraction", 'production', 'queueadapter']
+    optional_params = ["averaging_fraction", 'production']
 
     def run_task(self, fw_spec):
         calc_dir = get_calc_loc(True, fw_spec['calc_locs'])['path'] or os.getcwd()
@@ -99,7 +100,6 @@ class SpawnMDFWTask(FireTaskBase):
         calc_home = self["calc_home"]
         copy_calcs = self["copy_calcs"]
         production = self['production'] or False
-        queueadapter = self['queueadapter'] or {}
 
         if spawn_count > max_rescales:
             logger.info("WARNING: The max number of rescales has been reached... stopping density search.")
@@ -140,7 +140,6 @@ class SpawnMDFWTask(FireTaskBase):
                                    copy_calcs=copy_calcs,
                                    calc_home=calc_home,
                                    averaging_fraction=averaging_fraction,
-                                   queueadapter=queueadapter,
                                    production=production))
             t.append(PassCalcLocs(name=name))
             new_fw = Firework(t, name=name)
@@ -149,16 +148,14 @@ class SpawnMDFWTask(FireTaskBase):
         else:
             if production:
                 if spawn_count >= 0:
+                    spawn_count = 0
+                if abs(spawn_count) > production:
                     logger.info("LOGGER: Pressure is within the threshold: Spawning a final",
                                 " production run.")
 
                     t = []
 
                     t.append(CopyVaspOutputs(calc_dir=calc_dir, contcar_to_poscar=True))
-
-                    # TODO This way of switching to a production run is pretty dreadful
-                    # TODO I am just keeping it as a bandaid for my purposes
-                    t.append(ScriptTask("sed -i 's/NSW.*/NSW=5000/g' INCAR"))
 
                     t.append(RunVaspCustodian(vasp_cmd=vasp_cmd, gamma_vasp_cmd=">>vasp_gam<<",
                                               handler_group="md", wall_time=wall_time))
@@ -172,17 +169,15 @@ class SpawnMDFWTask(FireTaskBase):
                                            wall_time=wall_time,
                                            vasp_cmd=vasp_cmd,
                                            db_file=db_file,
-                                           spawn_count=-1,
+                                           spawn_count=spawn_count-1,
                                            copy_calcs=copy_calcs,
                                            calc_home=calc_home,
                                            averaging_fraction=averaging_fraction,
-                                           production=production,
-                                           queueadapter=queueadapter))
+                                           production=production))
                     t.append(PassCalcLocs(name=name))
                     new_fw = Firework(t, name=name)
 
-                    return FWAction(stored_data={'pressure': p, 'density_calculated': True}, detours=[new_fw],
-                                    update_spec={'_queueadapter': queueadapter})
+                    return FWAction(stored_data={'pressure': p, 'density_calculated': True}, detours=[new_fw])
                 logger.info("LOGGER: Production run completed. ")
             else:
                 logger.info("LOGGER: Pressure is within the threshold: Stopping Spawns.")
@@ -262,10 +257,7 @@ class PackToLammps(FireTaskBase):
     optional_params = ['atom_style', 'packmol_file', 'lammps_data']
 
     def run_task(self, fw_spec):
-        #calc_loc = self.get("calc_loc") or True
-        #calc_dir = get_calc_loc(calc_loc, fw_spec["calc_locs"])["path"]
         calc_dir = os.getcwd()
-
         box_size = self.get('box_size')
         atom_style = self.get('atom_style') or 'full'
         packmol_file = self.get('packmol_file') or 'packed_mol.xyz'
@@ -287,11 +279,12 @@ class LammpsToVaspMD(FiretaskBase):
                        'copy_vasp_outputs', 'db_file', 'name', 'parents', 'spawn']
 
     def run_task(self, fw_spec):
-        atom_style  = self.get('atom_style')
-        start_temp  = self.get('start_temp')
-        end_temp    = self.get('end_temp')
-        nsteps      = self.get('nsteps')
-        spawn       = self.get('spawn') or False
+        atom_style = self.get('atom_style')
+        start_temp = self.get('start_temp')
+        end_temp = self.get('end_temp')
+        nsteps = self.get('nsteps')
+        spawn = self.get('spawn') or False
+        production = self.get('production') or False
 
         time_step = self.get('time_step') or 1
         vasp_cmd = self.get('vasp_cmd') or ">>vasp_gam<<"
@@ -299,8 +292,6 @@ class LammpsToVaspMD(FiretaskBase):
         user_incar_settings = self.get('user_incar_settings') or {}
         user_kpoints_settings = self.get('user_kpoints_settings') or None
         db_file = self.get('db_file') or None
-        name = self.get('name') or "VaspMDFW"
-        parents = self.get('parents') or None
         transmute = self.get('transmute') or None
 
         pressure_threshold = self.get('pressure_threshold') or 5
@@ -313,7 +304,7 @@ class LammpsToVaspMD(FiretaskBase):
         data = LammpsData.from_file(os.path.join(os.getcwd(), self.get('final_data')),
                                     atom_style=atom_style, sort_id=True)
         struc = data.structure
-        structure = Structure(lattice = struc.lattice, species=[s.specie for s in struc.sites],
+        structure = Structure(lattice=struc.lattice, species=[s.specie for s in struc.sites],
                               coords=[s.coords for s in struc.sites], coords_are_cartesian=True)
 
         if transmute:
@@ -342,10 +333,10 @@ class LammpsToVaspMD(FiretaskBase):
             t.append(SpawnMDFWTask(pressure_threshold=pressure_threshold, max_rescales=max_rescales,
                        wall_time=wall_time, vasp_cmd=vasp_cmd, db_file=db_file,
                        copy_calcs=copy_calcs, calc_home=calc_home,
-                       spawn_count=1))
+                       spawn_count=1, production=production))
             fw = Firework(tasks=t, name='SpawnMDFW')
 
-        return FWAction(detours=fw)
+        return FWAction(detours=fw, stored_data={'LammpsStructure': structure})
 
 
 @explicit_serialize

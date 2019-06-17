@@ -231,7 +231,8 @@ def get_wf_pack_lammps_vasp(pack_input_set = {}, pre_relax_input_set = {}, md_in
 
     md_input_set['atom_style'] = atom_style
     t.append(LammpsToVaspMD(**md_input_set))
-    md_fw = Firework(tasks=t, name="MDFW", parents=None, spec={'_queueadapter': {'nodes': 1, 'walltime': '00:30:00'}})
+
+    md_fw = Firework(tasks=t, name="MDFW", parents=None)
 
     fws.append(md_fw)
 
