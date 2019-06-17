@@ -445,7 +445,7 @@ class WriteVaspFromLammpsAndIOSet(FiretaskBase):
     def run_task(self, fw_spec):
         logger.info("PARSING final lammps positions to VASP.")
 
-        data = LammpsData.from_file(self['structure_loc'], atom_style=self.get('atom_style', 'full'), sort_id=True).structure
+        data = LammpsData.from_file(self['structure_loc'], atom_style=self.get('atom_style', 'full'), sort_id=True)
 
         struc = data.structure
         structure = Structure(lattice=struc.lattice, species=[s.specie for s in struc.sites],
