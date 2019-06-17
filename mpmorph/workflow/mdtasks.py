@@ -6,10 +6,10 @@ from mpmorph.analysis.structural_analysis import RadialDistributionFunction
 from mpmorph.analysis.transport import VDOS, Viscosity, Diffusion
 from atomate.vasp.firetasks.glue_tasks import CopyVaspOutputs, get_calc_loc
 from atomate.vasp.firetasks.run_calc import RunVaspCustodian
-from atomate.common.firetasks.glue_tasks import PassCalcLocs
+from atomate.common.firetasks.glue_tasks import PassCalcLocs, PassResults
 from atomate.vasp.firetasks.write_inputs import WriteVaspFromIOSet
 from fireworks.user_objects.firetasks.script_task import ScriptTask
-from pymatgen.io.vasp.outputs import Xdatcar
+from pymatgen.io.vasp.outputs import Xdatcar, Vasprun
 from pymatgen.core.structure import Structure
 import shutil
 import numpy as np
@@ -147,41 +147,85 @@ class SpawnMDFWTask(FireTaskBase):
 
         else:
             if production:
-                if spawn_count >= 0:
-                    spawn_count = 0
-                if abs(spawn_count) > production:
-                    logger.info("LOGGER: Pressure is within the threshold: Spawning a final",
-                                " production run.")
-
-                    t = []
-
-                    t.append(CopyVaspOutputs(calc_dir=calc_dir, contcar_to_poscar=True))
-
-                    t.append(RunVaspCustodian(vasp_cmd=vasp_cmd, gamma_vasp_cmd=">>vasp_gam<<",
-                                              handler_group="md", wall_time=wall_time))
-                    # Will implement the database insertion
-                    # t.append(VaspToDbTask(db_file=db_file,
-                    #                       additional_fields={"task_label": "density_adjustment"}))
-                    if copy_calcs:
-                        t.append(CopyCalsHome(calc_home=calc_home, run_name=name))
-                    t.append(SpawnMDFWTask(pressure_threshold=pressure_threshold,
-                                           max_rescales=max_rescales,
-                                           wall_time=wall_time,
-                                           vasp_cmd=vasp_cmd,
-                                           db_file=db_file,
-                                           spawn_count=spawn_count-1,
-                                           copy_calcs=copy_calcs,
-                                           calc_home=calc_home,
-                                           averaging_fraction=averaging_fraction,
-                                           production=production))
-                    t.append(PassCalcLocs(name=name))
-                    new_fw = Firework(t, name=name)
-
-                    return FWAction(stored_data={'pressure': p, 'density_calculated': True}, detours=[new_fw])
-                logger.info("LOGGER: Production run completed. ")
+                logger.info("LOGGER: Pressure is within the threshold: Moving to production runs...")
+                t = []
+                t.append(ProductionSpawnTask(vasp_cmd=vasp_cmd, wall_time=wall_time, db_file=db_file,
+                                             spawn_count=0, production=production))
+                new_fw = Firework(t)
+                return FWAction(stored_data={'pressure': p, 'density_calculated': True}, detours=[new_fw])
             else:
                 logger.info("LOGGER: Pressure is within the threshold: Stopping Spawns.")
             return FWAction(stored_data={'pressure': p, 'density_calculated': True})
+
+
+@explicit_serialize
+class ProductionSpawnTask(FireTaskBase):
+
+    """
+    A task for spawning MD calculations in production runs. Only considers whether or not the number of
+    production tasks is reached for the stop criteria at the moment. It also stores where all the
+    checkpoints of a production run are located. This list of directories is used for assembling the
+    checkpoints into a single analysis task.
+
+    Required Params:
+        vasp_cmd (str): command to run vasp
+        wall_time (int): wall time for each checkpoint in seconds
+        db_file (str): path to file with db credentials
+        spawn_count (int): The number of MD checkpoints that have been spawned. Used to track when production
+                            is completed.
+        production (int): The number of MD checkpoints in total for this production run.
+
+    Optional Params:
+        checkpoint_dirs (list): A list of all directories where checkpoints exist for this production
+                                MD run. Is listed as optional because the first spawn will not have
+                                any checkpoint directories
+
+
+
+    """
+
+    required_params = ['vasp_cmd', 'wall_time', 'db_file', 'spawn_count', 'production']
+    optional_params = ['checkpoint_dirs']
+
+    def run_task(self, fw_spec):
+
+        prev_checkpoint_dirs = fw_spec.get("checkpoint_dirs", [])  # If this is the first spawn, have no prev dirs
+        prev_checkpoint_dirs.append(os.getcwd())  # add the current directory to the list of checkpoints
+
+        calc_dir = get_calc_loc(True, fw_spec['calc_locs'])['path'] or os.getcwd()
+        vasp_cmd = self["vasp_cmd"]
+        wall_time = self["wall_time"]
+        db_file = self["db_file"]
+        spawn_count = self["spawn_count"]
+        production = self['production']
+
+        if spawn_count > production:
+            logger.info("LOGGER: Production run completed. Took {} spawns total")
+            return FWAction(stored_data={'production_run_completed': True})
+
+        else:
+            name = ("ProductionRun" + str(abs(spawn_count)))
+
+            logger.info("LOGGER: Starting spawn {} of production run".format(spawn_count))
+
+            t = []
+
+            t.append(CopyVaspOutputs(calc_dir=calc_dir, contcar_to_poscar=True))
+
+            t.append(RunVaspCustodian(vasp_cmd=vasp_cmd, gamma_vasp_cmd=">>vasp_gam<<",
+                                      handler_group="md", wall_time=wall_time))
+
+            t.append(ProductionSpawnTask(wall_time=wall_time,
+                                         vasp_cmd=vasp_cmd,
+                                         db_file=db_file,
+                                         spawn_count=spawn_count + 1,
+                                         production=production))
+            t.append(PassCalcLocs(name=name))
+            new_fw = Firework(t, name=name)
+
+            return FWAction(stored_data={'production_run_completed': False},
+                            update_spec={'checkpoint_dirs': prev_checkpoint_dirs}, detours=[new_fw])
+
 
 @explicit_serialize
 class RescaleVolumeTask(FireTaskBase):
@@ -342,20 +386,28 @@ class LammpsToVaspMD(FiretaskBase):
 @explicit_serialize
 class MDAnalysisTask(FireTaskBase):
     required_params = []
-    optional_params = ['time_step', 'get_rdf', 'get_diffusion', 'get_viscosity', 'get_vdos', 'get_run_data']
+    optional_params = ['time_step', 'get_rdf', 'get_diffusion', 'get_viscosity',
+                       'get_vdos', 'get_run_data', 'checkpoint_dirs']
 
     def run_task(self, fw_spec):
 
         get_rdf = self.get('get_rdf') or True
         get_diffusion = self.get('get_diffusion') or True
-        get_viscosity = self.get('get_viscosity') or True
+        get_viscosity = self.get('get_viscosity') or False
         get_vdos = self.get('get_vdos') or True
-        get_run_data = self.get('get_run_data') or True
+        get_run_data = self.get('get_run_data') or False
         time_step = self.get('time_step') or 1
+        checkpoint_dirs = self.get('checkpoint_dirs') or False
 
         calc_dir = get_calc_loc(True, fw_spec["calc_locs"])["path"]
         calc_loc = os.path.join(calc_dir, 'XDATCAR.gz')
-        structures = Xdatcar(calc_loc).structures
+
+        if checkpoint_dirs:
+            structures = []
+            for d in checkpoint_dirs:
+                structures.extend(Vasprun(os.path.join(d, 'vasprun.xml.gz')).structures)
+        else:
+            structures = Xdatcar(calc_loc).structures
 
         if get_rdf:
             rdf = RadialDistributionFunction(structures=structures)
@@ -382,6 +434,8 @@ class MDAnalysisTask(FireTaskBase):
             plot_md_data(md_data, show=False, save=True)
 
         return FWAction()
+
+
 
 @explicit_serialize
 class TransmuteTask(FireTaskBase):

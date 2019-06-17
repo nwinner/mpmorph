@@ -240,7 +240,7 @@ def get_wf_pack_lammps_vasp(pack_input_set = {}, pre_relax_input_set = {}, md_in
     # ---------------------- ANALYSIS SECTION ---------------------------- #
     # -------------------------------------------------------------------- #
 
-    t = MDAnalysisTask(time_step=md_input_set.get('time_step', 1))
+    t = MDAnalysisTask(time_step=md_input_set.get('time_step'))
 
     fws.append(Firework(t, name="AnalysisTask", parents=md_fw))
 

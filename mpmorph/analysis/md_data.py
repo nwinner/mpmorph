@@ -6,14 +6,15 @@ from mpmorph.analysis.utils import autocorrelation
 from pymatgen.io.vasp.outputs import Oszicar, Vasprun
 from matplotlib import pyplot as plt
 
+
 class MD_Data:
 
-    def __init__(self, dir):
+    def __init__(self, input):
 
-        if os.path.isfile(os.path.join(dir, 'vasprun.xml.gz')):
-            v = Vasprun(os.path.join(dir, 'vasprun.xml.gz'))
-        elif os.path.isfile(os.path.join(dir, 'vasprun.xml')):
-            v = Vasprun(os.path.join(dir, 'vasprun.xml'))
+        if os.path.isfile(os.path.join(input, 'vasprun.xml.gz')):
+            v = Vasprun(os.path.join(input, 'vasprun.xml.gz'))
+        elif os.path.isfile(os.path.join(input, 'vasprun.xml')):
+            v = Vasprun(os.path.join(input, 'vasprun.xml'))
         else:
             raise FileNotFoundError
 
@@ -46,12 +47,33 @@ class MD_Data:
                         'ekin': autocorrelation(ekin, normalize=True),
                         'temp': autocorrelation(temp, normalize=True)}
 
-    def get_md_stats(self):
+    @property
+    def md_data(self):
+        return self.md_data
+
+    @property
+    def md_acfs(self):
+        return self.md_acfs
+
+    @property
+    def temp(self):
+        return self.temp
+
+    @staticmethod
+    def assemble_md_data(data):
+        result = data[0].copy()
+
+        for d in data[1:]:
+            for key, value in d.items():
+                result[key].extend(value)
+
+    @staticmethod
+    def get_md_stats(data):
         stats = {}
-        for k, v in self.md_data.items():
-            stats[k] = {'Mean': np.mean(v), 'StdDev': np.std(v),
-                        'Relaxation time': np.trapz(self.md_acfs[k], self.time)}
+        for k, v in data.items():
+            stats[k] = {'Mean': np.mean(v), 'StdDev': np.std(v)}
         return stats
+
 
 def get_MD_data(dir):
     if os.path.isfile(os.path.join(dir, 'vasprun.xml.gz')):
@@ -137,6 +159,7 @@ def plot_md_data(data, show=True, save=False):
                 plt.show()
             if save:
                 plt.savefig('{}.{}'.format(k, 'png'), fmt='png')
+
 
 def parse_pressure(path, averaging_fraction=0.5):
     os.system("grep external " + path + "/OUTCAR | awk '{print $4}' > "+path +"/pres")
