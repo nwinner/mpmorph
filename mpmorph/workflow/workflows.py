@@ -13,7 +13,7 @@ from fireworks.user_objects.firetasks.script_task import ScriptTask
 from atomate.common.firetasks.glue_tasks import CopyFilesFromCalcLoc, PassCalcLocs
 from pymatgen.core.structure import Structure
 
-from mpmorph.workflow.mdtasks import AmorphousMakerTask, LammpsToVaspMD, MDAnalysisTask, PackToLammps
+from mpmorph.workflow.mdtasks import LammpsToVaspMD, MDAnalysisTask, PackToLammps, WriteVaspFromLammpsAndIOSet
 
 import os
 
@@ -230,9 +230,25 @@ def get_wf_pack_lammps_vasp(pack_input_set = {}, pre_relax_input_set = {}, md_in
     # -------------------------------------------------------------------- #
 
     md_input_set['atom_style'] = atom_style
-    t.append(LammpsToVaspMD(**md_input_set))
 
-    md_fw = Firework(tasks=t, name="MDFW", parents=None)
+    final_data = md_input_set.get('final_data') or 'final.data'
+    vasp_cmd = md_input_set.get('vasp_cmd') or ">>vasp_gam<<"
+
+    pressure_threshold = md_input_set.get('pressure_threshold') or 5
+    max_rescales = md_input_set.get('max_rescales') or 6
+    wall_time = md_input_set.get('wall_time') or 19200
+    copy_calcs = md_input_set.get('copy_calcs') or False
+
+    production = md_input_set.get('production') or False
+
+    t.append(WriteVaspFromLammpsAndIOSet(vasp_input_set="MITMDSet", structure_loc=final_data,
+                                         vasp_input_params=md_input_set), atom_style=atom_style)
+
+    t.append(SpawnMDFWTask(pressure_threshold=pressure_threshold, max_rescales=max_rescales,
+                           wall_time=wall_time, vasp_cmd=vasp_cmd,
+                           copy_calcs=copy_calcs, production=production))
+
+    md_fw = Firework(tasks=t, name="SpawnMDFW", parents=None)
 
     fws.append(md_fw)
 

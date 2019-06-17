@@ -14,6 +14,7 @@ from pymatgen.core.structure import Structure
 import shutil
 import numpy as np
 from atomate.vasp.firetasks.parse_outputs import VaspToDbTask
+from atomate.utils.utils import env_chk, load_class
 import os
 import json
 
@@ -436,6 +437,17 @@ class MDAnalysisTask(FireTaskBase):
         return FWAction()
 
 
+@explicit_serialize
+class WriteVaspFromLammpsAndIOSet(FiretaskBase):
+
+    required_params = ["vasp_input_set", "structure_loc"]
+    optional_params = ["vasp_input_params", 'atom_style']
+
+    def run_task(self, fw_spec):
+        structure = LammpsData.from_file(self['structure_loc'], atom_style=self.get('atom_style', 'full'))
+        vis_cls = load_class("pymatgen.io.vasp.sets", self["vasp_input_set"])
+        vis = vis_cls(structure, **self.get("vasp_input_params", {}))
+        vis.write_input(".")
 
 @explicit_serialize
 class TransmuteTask(FireTaskBase):
