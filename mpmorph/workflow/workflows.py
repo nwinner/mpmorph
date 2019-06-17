@@ -229,11 +229,10 @@ def get_wf_pack_lammps_vasp(pack_input_set = {}, pre_relax_input_set = {}, md_in
     # -------------------------------------------------------------------- #
     # ----------------------- VASP SECTION ------------------------------- #
     # -------------------------------------------------------------------- #
-
-    t.append(WriteVaspFromLammpsAndIOSet(vasp_input_set="MITMDSet", structure_loc='final.data',
+    final_data = spawn_set.get('final_data') or 'final.data'
+    t.append(WriteVaspFromLammpsAndIOSet(vasp_input_set="MITMDSet", structure_loc=final_data,
                                          vasp_input_params=md_input_set, atom_style=atom_style))
 
-    final_data = spawn_set.get('final_data') or 'final.data'
     vasp_cmd = spawn_set.get('vasp_cmd') or ">>vasp_gam<<"
 
     pressure_threshold = spawn_set.get('pressure_threshold') or 5

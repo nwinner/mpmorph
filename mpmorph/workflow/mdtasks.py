@@ -443,7 +443,14 @@ class WriteVaspFromLammpsAndIOSet(FiretaskBase):
     optional_params = ["vasp_input_params", 'atom_style']
 
     def run_task(self, fw_spec):
-        structure = LammpsData.from_file(self['structure_loc'], atom_style=self.get('atom_style', 'full')).structure
+        logger.info("PARSING final lammps positions to VASP.")
+
+        data = LammpsData.from_file(self['structure_loc'], atom_style=self.get('atom_style', 'full'), sort_id=True).structure
+
+        struc = data.structure
+        structure = Structure(lattice=struc.lattice, species=[s.specie for s in struc.sites],
+                              coords=[s.coords for s in struc.sites], coords_are_cartesian=True)
+
         vis_cls = load_class("pymatgen.io.vasp.sets", self["vasp_input_set"])
         vis = vis_cls(structure, **self.get("vasp_input_params", {}))
         vis.write_input(".")
