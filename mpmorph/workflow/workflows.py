@@ -3,7 +3,8 @@ from atomate.vasp.fireworks.core import MDFW, OptimizeFW, StaticFW
 from mpmorph.workflow.mdtasks import SpawnMDFWTask, CopyCalsHome
 from mpmorph.runners.amorphous_maker import AmorphousMaker
 from mpmorph.analysis.structural_analysis import get_sample_structures
-from atomate.vasp.firetasks.glue_tasks import CopyVaspOutputs
+from atomate.vasp.firetasks.glue_tasks import
+from atomate.vasp.firetasks.run_calc import RunVaspCustodian
 from pymatgen.core.periodic_table import Element
 from pymatgen.core.structure import Molecule
 
@@ -242,12 +243,17 @@ def get_wf_pack_lammps_vasp(pack_input_set = {}, pre_relax_input_set = {}, md_in
 
     production = spawn_set.get('production') or False
 
+    t.append(RunVaspCustodian(vasp_cmd=vasp_cmd,
+                              gamma_vasp_cmd=">>gamma_vasp_cmd<<",
+                              handler_group="md", wall_time=wall_time))
+    t.append(PassCalcLocs(name="MDFW"))
+
     t.append(SpawnMDFWTask(pressure_threshold=pressure_threshold, max_rescales=max_rescales,
                            wall_time=wall_time, vasp_cmd=vasp_cmd, db_file=db_file,
                            copy_calcs=copy_calcs, production=production, spawn_count=0,
                            calc_home='~'))
 
-    md_fw = Firework(tasks=t, name="SpawnMDFW", parents=None)
+    md_fw = Firework(tasks=t, name="MDFW", parents=None)
 
     fws.append(md_fw)
 
