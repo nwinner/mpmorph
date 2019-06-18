@@ -449,7 +449,7 @@ class MDAnalysisTask(FireTaskBase):
 
 
 @explicit_serialize
-class WriteVaspFromLammpsAndIOSet(FiretaskBase):
+class WriteVaspFromLammpsAndIOSet(FireTaskBase):
 
     required_params = ["vasp_input_set", "structure_loc"]
     optional_params = ["vasp_input_params", 'atom_style']
