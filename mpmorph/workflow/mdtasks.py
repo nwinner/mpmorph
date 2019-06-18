@@ -15,6 +15,7 @@ import shutil
 import numpy as np
 from atomate.vasp.firetasks.parse_outputs import VaspToDbTask
 from atomate.utils.utils import env_chk, load_class
+from atomate.vasp.database import VaspCalcDb
 import os
 import json
 
@@ -402,6 +403,11 @@ class MDAnalysisTask(FireTaskBase):
         calc_dir = get_calc_loc(True, fw_spec["calc_locs"])["path"]
         calc_loc = os.path.join(calc_dir, 'XDATCAR.gz')
 
+        # store the results
+
+
+        db_dict = {}
+
         if checkpoint_dirs:
             structures = []
             for d in checkpoint_dirs:
@@ -412,26 +418,37 @@ class MDAnalysisTask(FireTaskBase):
         if get_rdf:
             rdf = RadialDistributionFunction(structures=structures)
             rdf_dat = rdf.get_radial_distribution_functions(nproc=16)
-            rdf_plt = rdf.plot_radial_distribution_functions(show=False, save=True)
+            db_dict.update({'rdf': rdf_dat})
 
         if get_vdos:
             vdos = VDOS(structures)
-            vdos.calc_vdos_spectrum(time_step=time_step)
-            vdos.plot_vdos(show=False, save=True)
+            vdos_dat = vdos.calc_vdos_spectrum(time_step=time_step)
+            db_dict.update({'vdos': vdos_dat})
 
         if get_diffusion:
             diffusion = Diffusion(structures, t_step=time_step, l_lim=0, ci=0.95)
             D = {}
             for s in structures[0].types_of_specie:
                 D[s] = diffusion.getD(s.symbol)
+            db_dict.update({'diffusion': D})
 
         if get_viscosity:
-            viscosity = Viscosity(calc_dir).calc_viscosity()
+            viscosities = []
+            if checkpoint_dirs:
+                for dir in checkpoint_dirs:
+                    viscosities.append(Viscosity(dir).calc_viscosity()['viscosity'])
+            viscosity_dat = {'viscosity': np.mean(viscosities), 'StdDev': np.std(viscosities)}
+            db_dict.update({'viscosity': viscosity_dat})
 
         if get_run_data:
             md_data = get_MD_data(calc_dir)
             md_stats = get_MD_stats(md_data)
             plot_md_data(md_data, show=False, save=True)
+
+        db_file = env_chk(self.get("db_file"), fw_spec)
+        db = VaspCalcDb.from_db_file(db_file, admin=True)
+        db.collection = db.db["md_data"]
+        db.collection.insert_one(db_dict)
 
         return FWAction()
 

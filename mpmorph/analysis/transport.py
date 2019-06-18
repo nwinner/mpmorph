@@ -432,6 +432,8 @@ class VDOS(object):
             self.freq[key] = np.fft.fftfreq(len(spectrum), time_step)[0:int(len(spectrum) /2)]  # freq
             self.vdos[key] = intensity[0:int(len(intensity)/2)]
 
+        return {'frequencies': self.freq, 'vdos': self.vdos}
+
     def plot_vdos(self, show=True, save=False):
         fig, axs = plt.subplots(2)
 
