@@ -1,36 +1,28 @@
-from fireworks import FireTaskBase, Firework
+import os
+import numpy as np
+import random
+import shutil
+
+from pymatgen.core.periodic_table import Specie
+from pymatgen.core.structure import Structure
+from pymatgen.io.lammps.data import LammpsData
+from pymatgen.io.vasp.outputs import Xdatcar, Vasprun
+from pymatgen.io.vasp.sets import MITMDSet
+
+from fireworks import FireTaskBase, Firework, FWAction, explicit_serialize
+
+from atomate.utils.utils import get_logger, env_chk, load_class
+from atomate.common.firetasks.glue_tasks import PassCalcLocs
+from atomate.vasp.fireworks.core import MDFW
+from atomate.vasp.firetasks.glue_tasks import CopyVaspOutputs, get_calc_loc
+from atomate.vasp.firetasks.run_calc import RunVaspCustodian
+from atomate.vasp.database import VaspCalcDb
+
 from mpmorph.runners.amorphous_maker import AmorphousMaker
 from mpmorph.runners.rescale_volume import RescaleVolume
 from mpmorph.analysis.md_data import parse_pressure, get_MD_data, get_MD_stats, plot_md_data
 from mpmorph.analysis.structural_analysis import RadialDistributionFunction
 from mpmorph.analysis.transport import VDOS, Viscosity, Diffusion
-from atomate.vasp.firetasks.glue_tasks import CopyVaspOutputs, get_calc_loc
-from atomate.vasp.firetasks.run_calc import RunVaspCustodian
-from atomate.common.firetasks.glue_tasks import PassCalcLocs
-from atomate.vasp.firetasks.write_inputs import WriteVaspFromIOSet
-from fireworks.user_objects.firetasks.script_task import ScriptTask
-from pymatgen.io.vasp.outputs import Xdatcar, Vasprun
-from pymatgen.core.structure import Structure
-import shutil
-import numpy as np
-from atomate.vasp.firetasks.parse_outputs import VaspToDbTask
-from atomate.utils.utils import env_chk, load_class
-from atomate.vasp.database import VaspCalcDb
-import os
-import json
-
-
-import random
-
-from pymatgen.io.lammps.data import LammpsData
-from pymatgen.io.vasp.sets import MITMDSet
-from pymatgen.core.periodic_table import Specie
-
-from fireworks.core.firework import FiretaskBase, FWAction
-from fireworks import explicit_serialize
-
-from atomate.utils.utils import get_logger
-from atomate.vasp.fireworks.core import MDFW
 
 __authors__ = 'Nicholas Winner, Muratahan Aykol'
 
@@ -93,7 +85,10 @@ class SpawnMDFWTask(FireTaskBase):
     optional_params = ["averaging_fraction", 'production']
 
     def run_task(self, fw_spec):
-        calc_dir = get_calc_loc(True, fw_spec['calc_locs'])['path'] or os.getcwd()
+        if fw_spec['calc_locs']:
+            calc_dir = get_calc_loc(True, fw_spec['calc_locs'])['path']
+        else:
+            calc_dir = os.getcwd()
         vasp_cmd = self["vasp_cmd"]
         wall_time = self["wall_time"]
         db_file = self["db_file"]
