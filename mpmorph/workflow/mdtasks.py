@@ -312,7 +312,7 @@ class PackToLammps(FireTaskBase):
 
 
 @explicit_serialize
-class LammpsToVaspMD(FiretaskBase):
+class LammpsToVaspMD(FireTaskBase):
     _fw_name = "LammpsToVasp"
     required_params = ["atom_style", "start_temp", "end_temp", "nsteps"]
     optional_params = ['time_step', 'vasp_input_set', 'user_kpoints_settings', 'vasp_cmd',
