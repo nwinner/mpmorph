@@ -188,7 +188,10 @@ class ProductionSpawnTask(FireTaskBase):
         prev_checkpoint_dirs = fw_spec.get("checkpoint_dirs", [])  # If this is the first spawn, have no prev dirs
         prev_checkpoint_dirs.append(os.getcwd())  # add the current directory to the list of checkpoints
 
-        calc_dir = get_calc_loc(True, fw_spec['calc_locs'])['path'] or os.getcwd()
+        if fw_spec['calc_locs']:
+            calc_dir = get_calc_loc(True, fw_spec['calc_locs'])['path']
+        else:
+            os.getcwd()
         vasp_cmd = self["vasp_cmd"]
         wall_time = self["wall_time"]
         db_file = self["db_file"]
