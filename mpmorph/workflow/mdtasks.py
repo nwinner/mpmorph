@@ -188,7 +188,7 @@ class ProductionSpawnTask(FireTaskBase):
         calc_dir = os.getcwd()
         vasp_cmd = self["vasp_cmd"]
         wall_time = self["wall_time"]
-        db_file = self["db_file"]
+        db_file = self.get("db_file", None)
         spawn_count = self["spawn_count"]
         production = self['production']
 
@@ -433,9 +433,12 @@ class MDAnalysisTask(FireTaskBase):
             db_dict.update({'viscosity': viscosity_dat})
 
         if get_run_data:
-            md_data = get_MD_data(calc_dir)
-            md_stats = get_MD_stats(md_data)
-            plot_md_data(md_data, show=False, save=True)
+            if checkpoint_dirs:
+                md_data = get_MD_data(calc_dir)
+                md_stats = get_MD_stats(md_data)
+            else:
+                md_data = get_MD_data(calc_dir)
+                md_stats = get_MD_stats(md_data)
 
         db_file = env_chk(self.get("db_file"), fw_spec)
         db = VaspCalcDb.from_db_file(db_file, admin=True)
