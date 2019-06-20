@@ -85,10 +85,7 @@ class SpawnMDFWTask(FireTaskBase):
     optional_params = ["averaging_fraction", 'production']
 
     def run_task(self, fw_spec):
-        if fw_spec['calc_locs']:
-            calc_dir = get_calc_loc(True, fw_spec['calc_locs'])['path']
-        else:
-            calc_dir = os.getcwd()
+        calc_dir = os.getcwd()
         vasp_cmd = self["vasp_cmd"]
         wall_time = self["wall_time"]
         db_file = self["db_file"]
@@ -188,10 +185,7 @@ class ProductionSpawnTask(FireTaskBase):
         prev_checkpoint_dirs = fw_spec.get("checkpoint_dirs", [])  # If this is the first spawn, have no prev dirs
         prev_checkpoint_dirs.append(os.getcwd())  # add the current directory to the list of checkpoints
 
-        if fw_spec['calc_locs']:
-            calc_dir = get_calc_loc(True, fw_spec['calc_locs'])['path']
-        else:
-            os.getcwd()
+        calc_dir = os.getcwd()
         vasp_cmd = self["vasp_cmd"]
         wall_time = self["wall_time"]
         db_file = self["db_file"]
