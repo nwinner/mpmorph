@@ -6,6 +6,7 @@ from copy import deepcopy
 from pymatgen.analysis import structure_analyzer
 #from pymatgen.util.coord_utils import get_angle
 from pymatgen.io.vasp.outputs import Xdatcar
+from pymatgen.core.structure import Structure
 
 
 def polyhedra_connectivity(structures, pair, cutoff, step_freq=1):

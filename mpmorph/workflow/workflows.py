@@ -237,7 +237,7 @@ def get_wf_pack_lammps_vasp(pack_input_set = {}, pre_relax_input_set = {}, md_in
 
     pressure_threshold = spawn_set.get('pressure_threshold') or 5
     max_rescales = spawn_set.get('max_rescales') or 6
-    wall_time = spawn_set.get('wall_time') or 19200
+    wall_time = spawn_set.get('wall_time', 19200)
     copy_calcs = spawn_set.get('copy_calcs') or False
 
     production = spawn_set.get('production') or False

@@ -103,7 +103,8 @@ class SpawnMDFWTask(FireTaskBase):
         name = ("spawnrun"+str(spawn_count))
 
         averaging_fraction = self.get("averaging_fraction", 0.5)
-        pressure = get_MD_data(calc_dir)['pressure']['val']
+        data = MD_Data().parse_md_data(calc_dir)
+        pressure = data.get_md_data['pressure']
         p = np.mean(pressure[int(averaging_fraction*(len(pressure)-1)):])
 
         logger.info("LOGGER: Current pressure is {}".format(p))
@@ -188,7 +189,7 @@ class ProductionSpawnTask(FireTaskBase):
         calc_dir = os.getcwd()
         vasp_cmd = self["vasp_cmd"]
         wall_time = self["wall_time"]
-        #db_file = self.get("db_file", None)
+        db_file = self.get("db_file", None)
         spawn_count = self["spawn_count"]
         production = self['production']
 
