@@ -177,8 +177,8 @@ class ProductionSpawnTask(FireTaskBase):
 
     """
 
-    required_params = ['vasp_cmd', 'wall_time', 'db_file', 'spawn_count', 'production']
-    optional_params = ['checkpoint_dirs']
+    required_params = ['vasp_cmd', 'wall_time', 'spawn_count', 'production']
+    optional_params = ['checkpoint_dirs', 'db_file']
 
     def run_task(self, fw_spec):
 
@@ -188,7 +188,7 @@ class ProductionSpawnTask(FireTaskBase):
         calc_dir = os.getcwd()
         vasp_cmd = self["vasp_cmd"]
         wall_time = self["wall_time"]
-        db_file = self.get("db_file", None)
+        #db_file = self.get("db_file", None)
         spawn_count = self["spawn_count"]
         production = self['production']
 
@@ -210,7 +210,7 @@ class ProductionSpawnTask(FireTaskBase):
 
             t.append(ProductionSpawnTask(wall_time=wall_time,
                                          vasp_cmd=vasp_cmd,
-                                         db_file=db_file,
+                                         db_file=None,
                                          spawn_count=spawn_count + 1,
                                          production=production))
             t.append(PassCalcLocs(name=name))
