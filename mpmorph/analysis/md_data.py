@@ -7,9 +7,18 @@ from pymatgen.io.vasp.outputs import Oszicar, Vasprun
 from matplotlib import pyplot as plt
 
 
-class MD_Data:
+class MD_Data(object):
 
-    def __init__(self, input):
+    def __init__(self):
+
+        self.nsteps = 0
+        self.time = []
+
+        self.md_data = {'pressure': [], 'etot': [], 'ekin': [], 'temp': []}
+        self.md_acfs = {}
+        self.md_stats = {}
+
+    def get_md_data(self, input):
 
         if os.path.isfile(os.path.join(input, 'vasprun.xml.gz')):
             v = Vasprun(os.path.join(input, 'vasprun.xml.gz'))
@@ -18,63 +27,82 @@ class MD_Data:
         else:
             raise FileNotFoundError
 
-        self.md_data = {}
+        if os.path.isfile(os.path.join(input, 'OSZICAR.gz')):
+            o = Oszicar(os.path.join(input, 'OSZICAR.gz'))
+        elif os.path.isfile(os.path.join(input, 'OSZICAR')):
+            o = Oszicar(os.path.join(input, 'OSZICAR'))
+        else:
+            raise FileNotFoundError
+
+        nsteps = v.nionic_steps
+        self.nsteps += nsteps
+        if self.time:
+            starttime = self.time[-1]
+            self.time.extend(np.add(np.arange(0, nsteps) * v.parameters['POTIM'], starttime))
+        else:
+            self.time.extend(np.arange(0, nsteps) * v.parameters['POTIM'])
+
         self.md_acfs = {}
         self.md_stats = {}
-        self.temp = v.parameters['TEEND']
-        self.nsteps = v.nionic_steps
-        self.time = np.arange(0, self.nsteps) * v.parameters['POTIM']
-
-    def get_md_data(self):
 
         pressure = []
         etot = []
-        temp = []
         ekin = []
-        temp = [self.temp for i in self.nsteps]
-
-        for step in o.ionic_steps:
-            ekin.append(step['EK'])
-            etot.append(step['E0'])
+        temp = []
+        for i, step in enumerate(o.ionic_steps):
+            temp.append(step['T'])
         for i, step in enumerate(v.ionic_steps):
+            ekin.append(step['kinetic'])
+            etot.append(step['total'])
             stress = step['stress']
             kinP = (2 / 3) * ekin[i]
             pressure.append((1 / 3) * np.trace(stress) + kinP)
 
-        self.md_data = {'pressure': pressure, 'etot': etot, 'ekin': ekin, 'temp': temp}
-        self.md_acfs = {'pressure': autocorrelation(pressure, normalize=True),
-                        'etot': autocorrelation(etot, normalize=True),
-                        'ekin': autocorrelation(ekin, normalize=True),
-                        'temp': autocorrelation(temp, normalize=True)}
+        self.md_data['pressure'].extend(pressure)
+        self.md_data['etot'].extend(etot)
+        self.md_data['ekin'].extend(ekin)
+        self.md_data['temp'].extend(temp)
 
     @property
-    def md_data(self):
-        return self.md_data
-
-    @property
-    def md_acfs(self):
+    def get_md_acfs(self):
         return self.md_acfs
 
     @property
-    def temp(self):
+    def get_temp(self):
         return self.temp
 
-    @staticmethod
-    def assemble_md_data(data):
-        result = data[0].copy()
-
-        for d in data[1:]:
-            for key, value in d.items():
-                result[key].extend(value)
-
-    @staticmethod
-    def get_md_stats(data):
+    def get_md_stats(self):
         stats = {}
-        for k, v in data.items():
-            stats[k] = {'Mean': np.mean(v), 'StdDev': np.std(v)}
+        for k, v in self.md_data.items():
+            stats[k] = {'Mean': np.mean(v[int(len(v)/2):]), 'StdDev': np.std(v)}
         return stats
 
+    def plot_md_data(self, show=True, save=False):
+        """
+        Args:
+            data_list:
 
+        Returns:
+            matplotlib plt object
+
+        """
+
+        for k, v in self.md_data.items():
+            fig, axs = plt.subplots()
+
+            axs.plot(self.time, v)
+            axs.set_ylabel('Simulation {}'.format(k), size=18)
+
+            axs.minorticks_on()
+            axs.tick_params(which='major', length=8, width=1, direction='in', top=True, right=True, labelsize=18)
+            axs.tick_params(which='minor', length=2, width=.5, direction='in', top=True, right=True)
+
+            if show:
+                plt.show()
+            if save:
+                plt.savefig('{}.{}'.format(k, 'png'), fmt='png')
+
+'''
 def get_MD_data(dir):
     if os.path.isfile(os.path.join(dir, 'vasprun.xml.gz')):
         v = Vasprun(os.path.join(dir, 'vasprun.xml.gz'))
@@ -127,14 +155,14 @@ def get_MD_stats(data):
 
 
 def plot_md_data(data, show=True, save=False):
-    '''
+    """
     Args:
         data_list:
 
     Returns:
         matplotlib plt object
 
-    '''
+    """
 
     time = data['time']
     for k, v in data.items():
@@ -174,3 +202,5 @@ def parse_pressure(path, averaging_fraction=0.5):
     else:
         raise ValueError("No OUTCAR found.")
     return avg_pres, vol, pressure
+    
+'''

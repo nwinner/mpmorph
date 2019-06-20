@@ -20,7 +20,7 @@ from atomate.vasp.database import VaspCalcDb
 
 from mpmorph.runners.amorphous_maker import AmorphousMaker
 from mpmorph.runners.rescale_volume import RescaleVolume
-from mpmorph.analysis.md_data import parse_pressure, get_MD_data, get_MD_stats, plot_md_data
+from mpmorph.analysis.md_data import MD_Data
 from mpmorph.analysis.structural_analysis import RadialDistributionFunction
 from mpmorph.analysis.transport import VDOS, Viscosity, Diffusion
 
@@ -434,11 +434,14 @@ class MDAnalysisTask(FireTaskBase):
 
         if get_run_data:
             if checkpoint_dirs:
-                md_data = get_MD_data(calc_dir)
-                md_stats = get_MD_stats(md_data)
+                data = MD_Data()
+                for directory in checkpoint_dirs:
+                    MD_Data.get_md_data(directory)
+                md_stats = MD_Data.get_md_stats()
             else:
-                md_data = get_MD_data(calc_dir)
-                md_stats = get_MD_stats(md_data)
+                data = MD_Data()
+                data.get_md_data(calc_dir)
+                data.get_md_stats()
 
         db_file = env_chk(self.get("db_file"), fw_spec)
         db = VaspCalcDb.from_db_file(db_file, admin=True)
