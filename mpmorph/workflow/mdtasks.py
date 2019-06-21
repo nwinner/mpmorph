@@ -123,8 +123,8 @@ class SpawnMDFWTask(FireTaskBase):
             # Will implement the database insertion
             # t.append(VaspToDbTask(db_file=db_file,
             #                       additional_fields={"task_label": "density_adjustment"}))
-            if copy_calcs:
-                t.append(CopyCalsHome(calc_home=calc_home, run_name=name))
+            #if copy_calcs:
+            #    t.append(CopyCalsHome(calc_home=calc_home, run_name=name))
             t.append(SpawnMDFWTask(pressure_threshold=pressure_threshold,
                                    max_rescales=max_rescales,
                                    wall_time=wall_time,
@@ -135,7 +135,7 @@ class SpawnMDFWTask(FireTaskBase):
                                    calc_home=calc_home,
                                    averaging_fraction=averaging_fraction,
                                    production=production))
-            t.append(PassCalcLocs(name=name))
+            #t.append(PassCalcLocs(name=name))
             new_fw = Firework(t, name=name)
             return FWAction(stored_data={'pressure': p}, detours=[new_fw])
 
@@ -143,7 +143,7 @@ class SpawnMDFWTask(FireTaskBase):
             if production:
                 logger.info("LOGGER: Pressure is within the threshold: Moving to production runs...")
                 t = []
-                t.append(PassCalcLocs(name="ProductionRun1"))
+                #t.append(PassCalcLocs(name="ProductionRun1"))
                 t.append(RunVaspCustodian(vasp_cmd=vasp_cmd, gamma_vasp_cmd=">>vasp_gam<<",
                                           handler_group="md", wall_time=wall_time))
                 t.append(ProductionSpawnTask(vasp_cmd=vasp_cmd, wall_time=wall_time, db_file=db_file,
@@ -216,7 +216,7 @@ class ProductionSpawnTask(FireTaskBase):
                                          db_file=None,
                                          spawn_count=spawn_count + 1,
                                          production=production))
-            t.append(PassCalcLocs(name=name))
+            #t.append(PassCalcLocs(name=name))
             new_fw = Firework(t, name=name)
 
             return FWAction(stored_data={'production_run_completed': False},
