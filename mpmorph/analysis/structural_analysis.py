@@ -542,6 +542,13 @@ class RadialDistributionFunction(object):
             plt.show()
         return plt
 
+    def get_rdf_db_dict(self):
+        db_rdf = self.RDFs.copy()
+        for key, value in self.RDFs.items():
+            db_rdf[key[0]+'-'+key[1]] = list(self.RDFs[key])
+            del db_rdf[key]
+        return db_rdf
+
 def _process_frame(data):
     """
     Helper function for parallel rdf computation

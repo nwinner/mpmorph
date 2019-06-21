@@ -193,9 +193,6 @@ class Diffusion(object):
 
         msds = []
 
-        block      = False
-        boot_strap = True
-
         if self.sampling_method == 'block':
             for i in range(self.n_origins):
                 su = np.square(np.cumsum(self.md[i * self.corr_t: i * self.corr_t + self.block_t], axis=0))
@@ -263,7 +260,7 @@ class Diffusion(object):
 
         mean_md = [np.mean(np.mean(x, axis=1), axis=0) for x in self.md]
         acf = autocorrelation(mean_md)
-        tao = np.trapz(acf, np.arange(0,len(acf), self.t_step))
+        tao = np.trapz(acf, np.arange(0,len(acf)) * self.t_step)
         self.corr_t = tao
         return tao
 
@@ -427,12 +424,18 @@ class VDOS(object):
             self.acfs[key] = mean_acf
 
         for key, value in self.acfs.items():
-            spectrum  = power_spectrum(value)*Element(key).atomic_mass
+            spectrum = power_spectrum(value)*Element(key).atomic_mass
             intensity = spectrum / np.max(spectrum)
-            self.freq[key] = np.fft.fftfreq(len(spectrum), time_step)[0:int(len(spectrum) /2)]  # freq
-            self.vdos[key] = intensity[0:int(len(intensity)/2)]
+            self.freq[key.symbol] = list(np.fft.fftfreq(len(spectrum), time_step)[0:int(len(spectrum) /2)])  # freq
+            self.vdos[key.symbol] = list(intensity[0:int(len(intensity)/2)])
 
         return {'frequencies': self.freq, 'vdos': self.vdos}
+
+    def calc_diffusion_coefficient(self, time_step=1):
+        D = {}
+        for key, value in self.vdos.items():
+            D[key] = np.trapz(value, np.arange(0, len(value))*time_step) * 0.1 #cm^2/s
+        return D
 
     def plot_vdos(self, show=True, save=False):
         fig, axs = plt.subplots(2)

@@ -7,7 +7,7 @@ from pymatgen.io.vasp.outputs import Oszicar, Vasprun
 from matplotlib import pyplot as plt
 
 
-class MD_Data(object):
+class MD_Data:
 
     def __init__(self):
 

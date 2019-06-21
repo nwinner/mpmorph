@@ -15,7 +15,7 @@ from atomate.utils.utils import get_logger, env_chk, load_class
 from atomate.common.firetasks.glue_tasks import PassCalcLocs
 from atomate.vasp.fireworks.core import MDFW
 from atomate.vasp.firetasks.glue_tasks import CopyVaspOutputs, get_calc_loc
-from atomate.vasp.firetasks.run_calc import RunVaspCustodian
+from atomate.vasp.firetasks.run_calc import RunVaspCustodian, RunVaspFake
 from atomate.vasp.database import VaspCalcDb
 
 from mpmorph.runners.amorphous_maker import AmorphousMaker
@@ -106,26 +106,18 @@ class SpawnMDFWTask(FireTaskBase):
         averaging_fraction = self.get("averaging_fraction", 0.5)
         data = MD_Data()
         data.parse_md_data(current_dir)
-        pressure = data.get_md_data['pressure']
+        pressure = data.get_md_data()['pressure']
         p = np.mean(pressure[int(averaging_fraction*(len(pressure)-1)):])
 
         logger.info("LOGGER: Current pressure is {}".format(p))
-
         if np.fabs(p) > pressure_threshold:
             logger.info("LOGGER: Pressure is outside of threshold: Spawning another MD Task")
             t = []
-            # Copy the VASP outputs from previous run. Very first run get its from the initial MDWF which
-            # uses PassCalcLocs. For the rest we just specify the previous dir.
-
             t.append(CopyVaspOutputs(calc_dir=current_dir, contcar_to_poscar=True))
             t.append(RescaleVolumeTask(initial_pressure=p*1000.0, initial_temperature=1))
             t.append(RunVaspCustodian(vasp_cmd=vasp_cmd, gamma_vasp_cmd=">>vasp_gam<<",
                                       handler_group="md", wall_time=wall_time))
-            # Will implement the database insertion
-            # t.append(VaspToDbTask(db_file=db_file,
-            #                       additional_fields={"task_label": "density_adjustment"}))
-            #if copy_calcs:
-            #    t.append(CopyCalsHome(calc_home=calc_home, run_name=name))
+
             t.append(SpawnMDFWTask(pressure_threshold=pressure_threshold,
                                    max_rescales=max_rescales,
                                    wall_time=wall_time,
@@ -143,12 +135,11 @@ class SpawnMDFWTask(FireTaskBase):
         elif production:
             logger.info("LOGGER: Pressure is within the threshold: Moving to production runs...")
             t = []
-            #t.append(PassCalcLocs(name="ProductionRun1"))
             t.append(CopyVaspOutputs(calc_dir=current_dir, contcar_to_poscar=True))
             t.append(RunVaspCustodian(vasp_cmd=vasp_cmd, gamma_vasp_cmd=">>vasp_gam<<",
                                       handler_group="md", wall_time=wall_time))
             t.append(ProductionSpawnTask(vasp_cmd=vasp_cmd, wall_time=wall_time, db_file=db_file,
-                                         spawn_count=1, production=production))
+                                         spawn_count=0, production=production))
             production_fw = Firework(t, name="ProductionRun1")
             return FWAction(stored_data={'pressure': p, 'density_calculated': True}, detours=[production_fw])
 
@@ -197,7 +188,7 @@ class ProductionSpawnTask(FireTaskBase):
         production = self['production']
 
         if spawn_count > production:
-            logger.info("LOGGER: Production run completed. Took {} spawns total")
+            logger.info("LOGGER: Production run completed. Took {} spawns total".format(spawn_count))
             return FWAction(stored_data={'production_run_completed': True})
 
         else:
@@ -211,14 +202,12 @@ class ProductionSpawnTask(FireTaskBase):
 
             t.append(RunVaspCustodian(vasp_cmd=vasp_cmd, gamma_vasp_cmd=">>vasp_gam<<",
                                       handler_group="md", wall_time=wall_time))
-
             t.append(ProductionSpawnTask(wall_time=wall_time,
                                          vasp_cmd=vasp_cmd,
                                          db_file=None,
                                          spawn_count=spawn_count + 1,
                                          production=production))
-            #t.append(PassCalcLocs(name=name))
-            new_fw = Firework(t, name=name)
+            new_fw = Firework(t, name=name, spec={'checkpoint_dirs': prev_checkpoint_dirs})
 
             return FWAction(stored_data={'production_run_completed': False},
                             update_spec={'checkpoint_dirs': prev_checkpoint_dirs}, detours=[new_fw])
@@ -384,70 +373,99 @@ class LammpsToVaspMD(FireTaskBase):
 class MDAnalysisTask(FireTaskBase):
     required_params = []
     optional_params = ['time_step', 'get_rdf', 'get_diffusion', 'get_viscosity',
-                       'get_vdos', 'get_run_data', 'checkpoint_dirs']
+                       'get_vdos', 'get_run_data', 'checkpoint_dirs', 'analysis_spec']
 
     def run_task(self, fw_spec):
 
         get_rdf = self.get('get_rdf') or True
         get_diffusion = self.get('get_diffusion') or True
-        get_viscosity = self.get('get_viscosity') or False
+        get_viscosity = self.get('get_viscosity') or True
         get_vdos = self.get('get_vdos') or True
         get_run_data = self.get('get_run_data') or False
-        time_step = self.get('time_step') or 1
-        checkpoint_dirs = self.get('checkpoint_dirs') or False
+        time_step = self.get('time_step') or 2
+        checkpoint_dirs = fw_spec.get('checkpoint_dirs', False)
 
         calc_dir = get_calc_loc(True, fw_spec["calc_locs"])["path"]
         calc_loc = os.path.join(calc_dir, 'XDATCAR.gz')
 
-        # store the results
+        ionic_step_skip = self.get('ionic_step_skip') or 1
+        ionic_step_offset = self.get('ionic_step_offset') or 0
 
-
-        db_dict = {}
+        analysis_spec = self.get('analysis_spec') or {}
 
         if checkpoint_dirs:
+            logger.info("LOGGER: Assimilating checkpoint structures")
             structures = []
             for d in checkpoint_dirs:
-                structures.extend(Vasprun(os.path.join(d, 'vasprun.xml.gz')).structures)
+                structures.extend(Vasprun(os.path.join(d, 'vasprun.xml.gz'),
+                                          ionic_step_skip=ionic_step_skip,
+                                          ionic_step_offset=ionic_step_offset).structures)
         else:
             structures = Xdatcar(calc_loc).structures
 
+        db_dict = {}
+
+        db_dict.update(structures[0].composition.to_data_dict)
+
         if get_rdf:
+            logger.info("LOGGER: Calculating radial distribution functions...")
             rdf = RadialDistributionFunction(structures=structures)
-            rdf_dat = rdf.get_radial_distribution_functions(nproc=16)
-            db_dict.update({'rdf': rdf_dat})
+            rdf_dat = rdf.get_radial_distribution_functions(nproc=4)
+            db_dict.update({'rdf': rdf.get_rdf_db_dict()})
+            del rdf
+            del rdf_dat
 
         if get_vdos:
+            logger.info("LOGGER: Calculating vibrational density of states...")
             vdos = VDOS(structures)
-            vdos_dat = vdos.calc_vdos_spectrum(time_step=time_step)
+            vdos_dat = vdos.calc_vdos_spectrum(time_step=time_step*ionic_step_skip)
+            vdos_diff = vdos.calc_diffusion_coefficient(time_step=time_step*ionic_step_skip)
             db_dict.update({'vdos': vdos_dat})
+            del vdos
+            del vdos_dat
 
         if get_diffusion:
-            diffusion = Diffusion(structures, t_step=time_step, l_lim=0, ci=0.95)
-            D = {}
+            logger.info("LOGGER: Calculating the diffusion coefficients...")
+            diffusion = Diffusion(structures, t_step=time_step, l_lim=50, ci=0.95)
+            D = {'msd':{}, 'vdos':{}}
             for s in structures[0].types_of_specie:
-                D[s] = diffusion.getD(s.symbol)
+                D['msd'][s.symbol] = diffusion.getD(s.symbol)
+            if vdos_diff:
+                D['vdos'] = vdos_diff
             db_dict.update({'diffusion': D})
+            del D
 
         if get_viscosity:
+            logger.info("LOGGER: Calculating the viscosity...")
             viscosities = []
             if checkpoint_dirs:
                 for dir in checkpoint_dirs:
-                    viscosities.append(Viscosity(dir).calc_viscosity()['viscosity'])
+                    visc = Viscosity(dir).calc_viscosity()
+                    viscosities.append(visc['viscosity'])
             viscosity_dat = {'viscosity': np.mean(viscosities), 'StdDev': np.std(viscosities)}
             db_dict.update({'viscosity': viscosity_dat})
+            del viscosity_dat
 
         if get_run_data:
             if checkpoint_dirs:
+                logger.info("LOGGER: Assimilating run stats...")
                 data = MD_Data()
                 for directory in checkpoint_dirs:
-                    MD_Data.get_md_data(directory)
-                md_stats = MD_Data.get_md_stats()
+                    data.get_md_data(directory)
+                md_stats = data.get_md_stats()
             else:
+                logger.info("LOGGER: Getting run stats...")
                 data = MD_Data()
                 data.get_md_data(calc_dir)
-                data.get_md_stats()
+                md_stats = data.get_md_stats()
+            db_dict.update({'md_data': md_stats})
 
-        db_file = env_chk(self.get("db_file"), fw_spec)
+        if analysis_spec:
+            logger.info("LOGGER: Adding user-specified data...")
+            db_dict.update(analysis_spec)
+
+        logger.info("LOGGER: Pushing data to database collection...")
+        db_file = env_chk(">>db_file<<", fw_spec)
         db = VaspCalcDb.from_db_file(db_file, admin=True)
         db.collection = db.db["md_data"]
         db.collection.insert_one(db_dict)

@@ -4,14 +4,9 @@ from mpmorph.workflow.mdtasks import SpawnMDFWTask, CopyCalsHome
 from mpmorph.runners.amorphous_maker import AmorphousMaker
 from mpmorph.analysis.structural_analysis import get_sample_structures
 from atomate.vasp.firetasks.glue_tasks import CopyVaspOutputs
-from atomate.vasp.firetasks.run_calc import RunVaspCustodian
-from pymatgen.core.periodic_table import Element
-from pymatgen.core.structure import Molecule
+from atomate.vasp.firetasks.run_calc import RunVaspCustodian, RunVaspFake
 
-from atomate.lammps.workflows.core import PackmolFW, LammpsFW, get_packmol_wf
-from atomate.lammps.firetasks.run_calc import RunPackmol
-from fireworks.user_objects.firetasks.script_task import ScriptTask
-from atomate.common.firetasks.glue_tasks import CopyFilesFromCalcLoc, PassCalcLocs
+from atomate.lammps.workflows.core import PackmolFW, LammpsFW
 from pymatgen.core.structure import Structure
 
 from mpmorph.workflow.mdtasks import LammpsToVaspMD, MDAnalysisTask, PackToLammps, WriteVaspFromLammpsAndIOSet
@@ -117,8 +112,9 @@ def get_relax_static_wf(structures, vasp_cmd=">>vasp_cmd<<", db_file=">>db_file<
     return wfs
 
 
-def get_wf_pack_lammps_vasp(pack_input_set = {}, pre_relax_input_set = {}, md_input_set = {}, spawn_set={},
-                              name="MD WF", metadata=None, db_file=None):
+def get_wf_pack_lammps_vasp(pack_input_set = {}, pre_relax_input_set = {}, md_input_set = {},
+                            spawn_set={}, analysis_spec={},
+                            name="MD WF", metadata=None, db_file=None):
 
     """
     A worflow for performing molecular dynamics with VASP. The real change versus the default one is the option
@@ -245,7 +241,6 @@ def get_wf_pack_lammps_vasp(pack_input_set = {}, pre_relax_input_set = {}, md_in
     t.append(RunVaspCustodian(vasp_cmd=vasp_cmd,
                               gamma_vasp_cmd=">>gamma_vasp_cmd<<",
                               handler_group="md", wall_time=wall_time))
-    #t.append(PassCalcLocs(name="MDFW"))
 
     t.append(SpawnMDFWTask(pressure_threshold=pressure_threshold, max_rescales=max_rescales,
                            wall_time=wall_time, vasp_cmd=vasp_cmd, db_file=db_file,
@@ -260,7 +255,7 @@ def get_wf_pack_lammps_vasp(pack_input_set = {}, pre_relax_input_set = {}, md_in
     # ---------------------- ANALYSIS SECTION ---------------------------- #
     # -------------------------------------------------------------------- #
 
-    t = MDAnalysisTask(time_step=md_input_set.get('time_step'))
+    t = MDAnalysisTask(time_step=md_input_set.get('time_step'), analysis_spec=analysis_spec)
 
     fws.append(Firework(t, name="AnalysisTask", parents=md_fw))
 
