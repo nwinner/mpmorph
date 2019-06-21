@@ -85,7 +85,6 @@ class SpawnMDFWTask(FireTaskBase):
     optional_params = ["averaging_fraction", 'production']
 
     def run_task(self, fw_spec):
-        calc_dir = os.getcwd()
         vasp_cmd = self["vasp_cmd"]
         wall_time = self["wall_time"]
         db_file = self["db_file"]
@@ -102,6 +101,8 @@ class SpawnMDFWTask(FireTaskBase):
 
         name = ("spawnrun"+str(spawn_count))
 
+        current_dir = os.getcwd()
+
         averaging_fraction = self.get("averaging_fraction", 0.5)
         data = MD_Data().parse_md_data(calc_dir)
         pressure = data.get_md_data['pressure']
@@ -115,7 +116,7 @@ class SpawnMDFWTask(FireTaskBase):
             # Copy the VASP outputs from previous run. Very first run get its from the initial MDWF which
             # uses PassCalcLocs. For the rest we just specify the previous dir.
 
-            t.append(CopyVaspOutputs(calc_loc=True, contcar_to_poscar=True))
+            t.append(CopyVaspOutputs(calc_dir=current_dir, contcar_to_poscar=True))
             t.append(RescaleVolumeTask(initial_pressure=p*1000.0, initial_temperature=1))
             t.append(RunVaspCustodian(vasp_cmd=vasp_cmd, gamma_vasp_cmd=">>vasp_gam<<",
                                       handler_group="md", wall_time=wall_time))
@@ -205,7 +206,7 @@ class ProductionSpawnTask(FireTaskBase):
 
             t = []
 
-            t.append(CopyVaspOutputs(calc_loc=True, contcar_to_poscar=True))
+            t.append(CopyVaspOutputs(calc_dir=os.getcwd(), contcar_to_poscar=True))
 
             t.append(RunVaspCustodian(vasp_cmd=vasp_cmd, gamma_vasp_cmd=">>vasp_gam<<",
                                       handler_group="md", wall_time=wall_time))
