@@ -104,7 +104,8 @@ class SpawnMDFWTask(FireTaskBase):
         current_dir = os.getcwd()
 
         averaging_fraction = self.get("averaging_fraction", 0.5)
-        data = MD_Data().parse_md_data(current_dir)
+        data = MD_Data()
+        data.parse_md_data(current_dir)
         pressure = data.get_md_data['pressure']
         p = np.mean(pressure[int(averaging_fraction*(len(pressure)-1)):])
 
