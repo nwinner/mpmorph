@@ -115,8 +115,7 @@ class SpawnMDFWTask(FireTaskBase):
             # Copy the VASP outputs from previous run. Very first run get its from the initial MDWF which
             # uses PassCalcLocs. For the rest we just specify the previous dir.
 
-            t.append(CopyVaspOutputs(calc_dir=calc_dir, contcar_to_poscar=True))
-
+            t.append(CopyVaspOutputs(calc_loc=True, contcar_to_poscar=True))
             t.append(RescaleVolumeTask(initial_pressure=p*1000.0, initial_temperature=1))
             t.append(RunVaspCustodian(vasp_cmd=vasp_cmd, gamma_vasp_cmd=">>vasp_gam<<",
                                       handler_group="md", wall_time=wall_time))
@@ -143,11 +142,11 @@ class SpawnMDFWTask(FireTaskBase):
             if production:
                 logger.info("LOGGER: Pressure is within the threshold: Moving to production runs...")
                 t = []
-                t.append(PassCalcLocs(name="ProductionRun0"))
+                t.append(PassCalcLocs(name="ProductionRun1"))
                 t.append(RunVaspCustodian(vasp_cmd=vasp_cmd, gamma_vasp_cmd=">>vasp_gam<<",
                                           handler_group="md", wall_time=wall_time))
                 t.append(ProductionSpawnTask(vasp_cmd=vasp_cmd, wall_time=wall_time, db_file=db_file,
-                                             spawn_count=0, production=production))
+                                             spawn_count=1, production=production))
                 new_fw = Firework(t)
                 return FWAction(stored_data={'pressure': p, 'density_calculated': True}, detours=[new_fw])
             else:
@@ -189,7 +188,6 @@ class ProductionSpawnTask(FireTaskBase):
         prev_checkpoint_dirs = fw_spec.get("checkpoint_dirs", [])  # If this is the first spawn, have no prev dirs
         prev_checkpoint_dirs.append(os.getcwd())  # add the current directory to the list of checkpoints
 
-        calc_dir = os.getcwd()
         vasp_cmd = self["vasp_cmd"]
         wall_time = self["wall_time"]
         db_file = self.get("db_file", None)
@@ -207,7 +205,7 @@ class ProductionSpawnTask(FireTaskBase):
 
             t = []
 
-            t.append(CopyVaspOutputs(calc_dir=calc_dir, contcar_to_poscar=True))
+            t.append(CopyVaspOutputs(calc_loc=True, contcar_to_poscar=True))
 
             t.append(RunVaspCustodian(vasp_cmd=vasp_cmd, gamma_vasp_cmd=">>vasp_gam<<",
                                       handler_group="md", wall_time=wall_time))
