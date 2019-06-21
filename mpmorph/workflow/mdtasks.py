@@ -144,11 +144,12 @@ class SpawnMDFWTask(FireTaskBase):
                 logger.info("LOGGER: Pressure is within the threshold: Moving to production runs...")
                 t = []
                 #t.append(PassCalcLocs(name="ProductionRun1"))
+                t.append(CopyVaspOutputs(calc_dir=current_dir, contcar_to_poscar=True))
                 t.append(RunVaspCustodian(vasp_cmd=vasp_cmd, gamma_vasp_cmd=">>vasp_gam<<",
                                           handler_group="md", wall_time=wall_time))
                 t.append(ProductionSpawnTask(vasp_cmd=vasp_cmd, wall_time=wall_time, db_file=db_file,
                                              spawn_count=1, production=production))
-                new_fw = Firework(t)
+                new_fw = Firework(t, name="ProductionRun1")
                 return FWAction(stored_data={'pressure': p, 'density_calculated': True}, detours=[new_fw])
             else:
                 logger.info("LOGGER: Pressure is within the threshold: Stopping Spawns.")
