@@ -381,7 +381,7 @@ class MDAnalysisTask(FireTaskBase):
         get_diffusion = self.get('get_diffusion') or True
         get_viscosity = self.get('get_viscosity') or True
         get_vdos = self.get('get_vdos') or True
-        get_run_data = self.get('get_run_data') or False
+        get_run_data = self.get('get_run_data') or True
         time_step = self.get('time_step') or 2
         checkpoint_dirs = fw_spec.get('checkpoint_dirs', False)
 
@@ -404,7 +404,7 @@ class MDAnalysisTask(FireTaskBase):
             structures = Xdatcar(calc_loc).structures
 
         db_dict = {}
-
+        db_dict.update({'density': float(structures[0].density)})
         db_dict.update(structures[0].composition.to_data_dict)
 
         if get_rdf:

@@ -221,7 +221,7 @@ class Diffusion(object):
         for i in self.msds:
             for j in range(3):
                 slope, intercept, r_value, p_value, std_err = \
-                    stats.linregress(np.arange(self.l_lim, self.block_t), i[:, j][self.l_lim:])
+                     stats.linregress(np.arange(self.l_lim, self.block_t), i[:, j][self.l_lim:])
                 D[j].append(slope / 2.0)
         D = np.array(D) * self.scaling_factor
         self.D_blocks = D
@@ -394,6 +394,7 @@ class VDOS(object):
 
         self.vel  = {}
         self.acfs = {}
+        self.acfs_norm = {}
         self.vdos = {}
         self.freq = {}
 
@@ -402,7 +403,7 @@ class VDOS(object):
         df = self.positions
 
         def vel(x):
-            return np.divide(np.gradient(x, axis=0), time_step)
+            return np.divide(np.diff(x, axis=0), time_step)
 
         ids = {}
         types = df.type.unique()
@@ -418,12 +419,16 @@ class VDOS(object):
 
         for key, value in self.vel.items():
             acf = []
+            acf_norm = []
             for v in value:
-                acf.append(autocorrelation(v))
+                acf.append(autocorrelation(v, normalize=False))
+                acf_norm.append(autocorrelation(v, normalize=True))
             mean_acf = np.mean(acf, axis=0)
+            mean_acf_norm = np.mean(acf_norm, axis=0)
             self.acfs[key] = mean_acf
+            self.acfs_norm[key] = mean_acf_norm
 
-        for key, value in self.acfs.items():
+        for key, value in self.acfs_norm.items():
             spectrum = power_spectrum(value)*Element(key).atomic_mass
             intensity = spectrum / np.max(spectrum)
             self.freq[key.symbol] = list(np.fft.fftfreq(len(spectrum), time_step)[0:int(len(spectrum) /2)])  # freq
@@ -433,8 +438,8 @@ class VDOS(object):
 
     def calc_diffusion_coefficient(self, time_step=1):
         D = {}
-        for key, value in self.vdos.items():
-            D[key] = np.trapz(value, np.arange(0, len(value))*time_step) * 0.1 #cm^2/s
+        for key, value in self.acfs.items():
+            D[key.symbol] = np.trapz(value, np.arange(0, len(value))*time_step) * 0.1 /len(value) #cm^2/s
         return D
 
     def plot_vdos(self, show=True, save=False):
@@ -448,7 +453,7 @@ class VDOS(object):
         axs[1].tick_params(which='major', length=8, width=1, direction='in', top=True, right=True, labelsize=14)
         axs[1].tick_params(which='minor', length=2, width=.5, direction='in', top=True, right=True, labelsize=14)
 
-        for k,v in self.acfs.items():
+        for k,v in self.acfs_norm.items():
             axs[0].plot(v, label=k)
         axs[0].set_xlabel('Steps', size=22)
         axs[0].set_ylabel('Velocity Autocorrelation Function, VACF', size=14)
@@ -513,9 +518,7 @@ class Viscosity(object):
                     self.norm_acfs.append(autocorrelation(self.shear_stresses[-1], normalize=True))
 
         self.acf = np.mean(self.acfs, axis=0)
-
         visc = []
         for acf in self.acfs:
             visc.append(self.volume*(1e-30)*np.trapz(self.acf,(1e-15)*self.time_step*np.arange(0,self.nsteps))/(self.formula_units*self.temp*boltzmann_SI))
-
         return {'viscosity': np.mean(visc), 'StdDev': np.std(visc)}
