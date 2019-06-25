@@ -203,7 +203,13 @@ class Diffusion(object):
                 msds.append(np.mean(su, axis=1))
 
         elif self.sampling_method == 'bootstrap':
-            boots = bootstrap(self.md, bootnum=self.n_trials(el))
+            for i in range(1, 5):
+                try:
+                    boots = bootstrap(self.md, bootnum=int(self.n_trials(el)/i))
+                    break
+                except MemoryError:
+                    continue
+
             self.block_l = len(boots[0])/self.corr_t
             for boot in boots:
                 su = np.square(np.cumsum(boot, axis=0))
