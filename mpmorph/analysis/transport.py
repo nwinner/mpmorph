@@ -172,7 +172,7 @@ class Diffusion(object):
         return int(n)
 
     def n_trials(self, el):
-        return int(len(self.structures)/(2*self.get_tao(el)))
+        return int(len(self.structures)/(2*self.corr_t))
 
     @property
     def block_t(self):
@@ -190,8 +190,12 @@ class Diffusion(object):
         # remove other elements from the rest of the calculations
         s = set(self.structures[0].indices_from_symbol(el))
         self.md = np.delete(self.md, [x for x in list(range(self.natoms)) if x not in s], 1)
-
         msds = []
+
+        mean_md = [np.mean(np.mean(x, axis=1), axis=0) for x in self.md]
+        acf = autocorrelation(mean_md, normalize=True)
+        tao = np.ceil(np.trapz(acf, np.arange(0, len(acf))))
+        self.corr_t = tao
 
         if self.sampling_method == 'block':
             for i in range(self.n_origins):
@@ -508,7 +512,7 @@ class Viscosity(object):
         self.ntrials = None
 
         self.formula_units = v.structures[0].composition.get_reduced_composition_and_factor()[1]
-
+        self.num_atoms = v.structures[0].composition.num_atoms
     def calc_viscosity(self):
         for i in range(3):
             for j in range(3):

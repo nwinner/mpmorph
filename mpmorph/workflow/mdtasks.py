@@ -426,7 +426,7 @@ class MDAnalysisTask(FireTaskBase):
 
         if get_diffusion:
             logger.info("LOGGER: Calculating the diffusion coefficients...")
-            diffusion = Diffusion(structures, t_step=time_step, l_lim=50, ci=0.95)
+            diffusion = Diffusion(structures, t_step=time_step, l_lim=50, skip_first=250, ci=0.95)
             D = {'msd':{}, 'vdos':{}}
             for s in structures[0].types_of_specie:
                 D['msd'][s.symbol] = diffusion.getD(s.symbol)
@@ -451,12 +451,12 @@ class MDAnalysisTask(FireTaskBase):
                 logger.info("LOGGER: Assimilating run stats...")
                 data = MD_Data()
                 for directory in checkpoint_dirs:
-                    data.get_md_data(directory)
+                    data.parse_md_data(directory)
                 md_stats = data.get_md_stats()
             else:
                 logger.info("LOGGER: Getting run stats...")
                 data = MD_Data()
-                data.get_md_data(calc_dir)
+                data.parse_md_data(calc_dir)
                 md_stats = data.get_md_stats()
             db_dict.update({'md_data': md_stats})
 
