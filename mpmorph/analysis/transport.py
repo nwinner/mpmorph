@@ -9,6 +9,7 @@ from matplotlib import pyplot as plt
 from pymatgen.core.periodic_table import Element
 from pymatgen.io.vasp.outputs import Vasprun, Xdatcar
 from astropy.stats import bootstrap
+from scipy.signal import savgol_filter
 
 from mpmorph.analysis.utils import autocorrelation, power_spectrum, calc_derivative, xdatcar_to_df
 
@@ -149,7 +150,7 @@ class Diffusion(object):
         ci: (float) confidence interval desired estimating the mean D of population.
     """
 
-    def __init__(self, structures, sampling_method='bootstrap', block_l=50, corr_t=1, t_step=2.0, l_lim=50, skip_first=0, ci=0.95):
+    def __init__(self, structures, sampling_method='block', block_l=50, corr_t=1, t_step=2.0, l_lim=50, skip_first=0, ci=0.95):
         self.structures = structures
         self.abc = self.structures[0].lattice.abc
         self.natoms = len(self.structures[0])
@@ -184,7 +185,6 @@ class Diffusion(object):
             dx = self.structures[i].frac_coords - self.structures[i - 1].frac_coords
             dx -= np.round(dx)
             md.append(dx)
-
         self.md = np.array(md) * self.abc
 
         # remove other elements from the rest of the calculations
@@ -192,10 +192,11 @@ class Diffusion(object):
         self.md = np.delete(self.md, [x for x in list(range(self.natoms)) if x not in s], 1)
         msds = []
 
+        # get the correlation time from the ACF
         mean_md = [np.mean(np.mean(x, axis=1), axis=0) for x in self.md]
         acf = autocorrelation(mean_md, normalize=True)
         tao = np.ceil(np.trapz(acf, np.arange(0, len(acf))))
-        self.corr_t = tao
+        self.corr_t = int(tao)
 
         if self.sampling_method == 'block':
             for i in range(self.n_origins):
@@ -205,12 +206,10 @@ class Diffusion(object):
         elif self.sampling_method == 'bootstrap':
             for i in range(1, 5):
                 try:
-                    boots = bootstrap(self.md, bootnum=int(self.n_trials(el)/i))
+                    boots = bootstrap(self.md, bootnum=int(self.n_trials(el)/i), samples=int(self.block_l/self.corr_t))
                     break
                 except MemoryError:
                     continue
-
-            self.block_l = len(boots[0])/self.corr_t
             for boot in boots:
                 su = np.square(np.cumsum(boot, axis=0))
                 msds.append(np.mean(su, axis=1))
@@ -381,8 +380,10 @@ class Activation(object):
 
 class VDOS(object):
 
-    def __init__(self, input):
-        if isinstance(input, Xdatcar):
+    def __init__(self, input, vdos_dict={}):
+        if input is None:
+            pass
+        elif isinstance(input, Xdatcar):
             self.positions = xdatcar_to_df(input)
         elif isinstance(input, list):
             try:
@@ -405,8 +406,14 @@ class VDOS(object):
         self.vel  = {}
         self.acfs = {}
         self.acfs_norm = {}
-        self.vdos = {}
-        self.freq = {}
+
+        if vdos_dict:
+            self.freq = vdos_dict['freq']
+            del vdos_dict['freq']
+            self.vdos = vdos_dict
+        else:
+            self.vdos = {}
+            self.freq = []
 
     def calc_vdos_spectrum(self, time_step=1):
 
@@ -441,10 +448,12 @@ class VDOS(object):
         for key, value in self.acfs_norm.items():
             spectrum = power_spectrum(value)*Element(key).atomic_mass
             intensity = spectrum / np.max(spectrum)
-            self.freq[key.symbol] = list(np.fft.fftfreq(len(spectrum), time_step)[0:int(len(spectrum) /2)])  # freq
+            self.freq = list(np.fft.fftfreq(len(spectrum), time_step)[0:int(len(spectrum) /2)])
             self.vdos[key.symbol] = list(intensity[0:int(len(intensity)/2)])
 
-        return {'frequencies': self.freq, 'vdos': self.vdos}
+        vdos_dict = self.vdos.copy()
+        vdos_dict.update({'freq': self.freq})
+        return vdos_dict
 
     def calc_diffusion_coefficient(self, time_step=1):
         D = {}
@@ -452,28 +461,24 @@ class VDOS(object):
             D[key.symbol] = np.trapz(value, np.arange(0, len(value))*time_step) * 0.1 /len(value) #cm^2/s
         return D
 
-    def plot_vdos(self, show=True, save=False):
-        fig, axs = plt.subplots(2)
+    def plot_vdos(self, show=True, save=False, smooth=False):
 
-        axs[0].minorticks_on()
-        axs[0].tick_params(which='major', length=8, width=1, direction='in', top=True, right=True, labelsize=14)
-        axs[0].tick_params(which='minor', length=2, width=.5, direction='in', top=True, right=True, labelsize=14)
+        fig, axs = plt.subplots()
 
-        axs[1].minorticks_on()
-        axs[1].tick_params(which='major', length=8, width=1, direction='in', top=True, right=True, labelsize=14)
-        axs[1].tick_params(which='minor', length=2, width=.5, direction='in', top=True, right=True, labelsize=14)
-
-        for k,v in self.acfs_norm.items():
-            axs[0].plot(v, label=k)
-        axs[0].set_xlabel('Steps', size=22)
-        axs[0].set_ylabel('Velocity Autocorrelation Function, VACF', size=14)
+        axs.minorticks_on()
+        axs.tick_params(which='major', length=8, width=1, direction='in', top=True, right=True, labelsize=14)
+        axs.tick_params(which='minor', length=2, width=.5, direction='in', top=True, right=True, labelsize=14)
 
         for k,v in self.vdos.items():
-            p = axs[1].plot(self.freq[k], v, label=k)
-            axs[1].fill(self.freq[k], v, alpha=0.3, color=p[-1].get_color())
-        axs[1].set_xlabel('Frequency ($fs^{-1}$)', size=22)
-        axs[1].set_xscale('log')
-        axs[1].set_ylabel('Velocity Density of States (a.u.)', size=14)
+            _vdos = v
+            if smooth:
+                _vdos = savgol_filter(_vdos, window_length=51, polyorder=3)
+            p = axs.plot(self.freq, _vdos, label=k)
+            axs.fill(self.freq, _vdos, alpha=0.3, color=p[-1].get_color())
+
+        axs.set_xlabel('Frequency ($fs^{-1}$)', size=22)
+        axs.set_xscale('log')
+        axs.set_ylabel('Velocity Density of States (a.u.)', size=14)
 
         plt.legend()
         if save:
@@ -519,6 +524,7 @@ class Viscosity(object):
 
         self.formula_units = v.structures[0].composition.get_reduced_composition_and_factor()[1]
         self.num_atoms = v.structures[0].composition.num_atoms
+
     def calc_viscosity(self):
         for i in range(3):
             for j in range(3):

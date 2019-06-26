@@ -7,6 +7,7 @@ from pymatgen.analysis import structure_analyzer
 #from pymatgen.util.coord_utils import get_angle
 from pymatgen.io.vasp.outputs import Xdatcar
 from pymatgen.core.structure import Structure
+from matplotlib import pyplot as plt
 
 
 def polyhedra_connectivity(structures, pair, cutoff, step_freq=1):
@@ -444,21 +445,28 @@ class RadialDistributionFunction(object):
     """
 
     def __init__(self, structures, cutoff=5.0, bin_size=0.1, step_freq=2, smooth=1,
-                 title="Radial distribution functions"):
-        self.structures = structures
-        self.cutoff = cutoff
-        self.bin_size = bin_size
-        self.step_freq = step_freq
-        self.smooth = smooth
-        self.n_frames = len(self.structures)
-        self.n_atoms = len(self.structures[0])
-        self.n_species = self.structures[0].composition.as_dict()
-        self.get_pair_order = None
-        self.title = title
-        self.RDFs = {}
-        ss = self.structures[0].symbol_set
-        self.pairs = [p for p in itertools.combinations_with_replacement(ss, 2)]
-        self.counter = 1
+                 title="Radial distribution functions", rdf_dict={}):
+        if structures:
+            self.structures = structures
+            self.cutoff = cutoff
+            self.bin_size = bin_size
+            self.step_freq = step_freq
+            self.smooth = smooth
+            self.n_frames = len(self.structures)
+            self.n_atoms = len(self.structures[0])
+            self.n_species = self.structures[0].composition.as_dict()
+            self.get_pair_order = None
+            self.title = title
+            self.RDFs = {}
+            ss = self.structures[0].symbol_set
+            self.pairs = [p for p in itertools.combinations_with_replacement(ss, 2)]
+            self.counter = 1
+            self.r = np.arange(0, cutoff, bin_size)
+        elif rdf_dict:
+            self.r = rdf_dict['r']
+            self.RDFs = rdf_dict
+            self.title = title
+            del self.RDFs['r']
 
     @property
     def n_bins(self):
@@ -514,12 +522,6 @@ class RadialDistributionFunction(object):
         """
         :return: a plot of RDFs
         """
-        import matplotlib.pyplot as plt
-        x = []
-        for j in range(self.n_bins):
-            r = j * self.bin_size
-            x.append(r)
-        rdfs = self.RDFs
 
         fig, ax1 = plt.subplots()
 
@@ -529,11 +531,10 @@ class RadialDistributionFunction(object):
         ax1.tick_params(which='major', length=8, width=1, direction='in', top=True, right=True, labelsize=14)
         ax1.tick_params(which='minor', length=2, width=.5, direction='in', top=True, right=True, labelsize=14)
 
-        for rdf in rdfs:
-            p = ax1.plot(x, rdfs[rdf])
-            #ax1.fill(x, rdfs[rdf], alpha=0.3, color=p[-1].get_color())
+        for key, rdf in self.RDFs.items():
+            ax1.plot(self.r, rdf, label=key)
 
-        plt.legend(self.get_pair_order, bbox_to_anchor=(0.975, 0.975),
+        plt.legend(bbox_to_anchor=(0.975, 0.975),
                    borderaxespad=0., prop={'family': 'sans-serif', 'size': 13}, frameon=False)
         plt.title(self.title)
         if save:
@@ -547,6 +548,7 @@ class RadialDistributionFunction(object):
         for key, value in self.RDFs.items():
             db_rdf[key[0]+'-'+key[1]] = list(self.RDFs[key])
             del db_rdf[key]
+        db_rdf.update({'r': list(np.arange(0, self.cutoff, self.bin_size))})
         return db_rdf
 
 def _process_frame(data):

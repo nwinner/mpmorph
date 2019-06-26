@@ -426,7 +426,7 @@ class MDAnalysisTask(FireTaskBase):
 
         if get_diffusion:
             logger.info("LOGGER: Calculating the diffusion coefficients...")
-            diffusion = Diffusion(structures, t_step=time_step, l_lim=50, skip_first=250, ci=0.95)
+            diffusion = Diffusion(structures, t_step=time_step, l_lim=50, skip_first=250, block_l=1000, ci=0.95)
             D = {'msd':{}, 'vdos':{}}
             for s in structures[0].types_of_specie:
                 D['msd'][s.symbol] = diffusion.getD(s.symbol)
