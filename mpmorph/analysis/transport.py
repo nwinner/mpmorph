@@ -64,7 +64,7 @@ class Spectrum(object):
         DACF = autocorrelation(D_p)                    # Dipole derivative autocorrelation function
         yfft = power_spectrum(DACF)                    # power spectrum of the dipole derivative ACF
 
-        wavenumber = np.fft.fftfreq(len(yfft), delta_t * c)[0:int(len(yfft) / 2)]  # Wavenumber in units of cm^-1
+        wavenumber = np.fft.fftfreq(len(yfft), c * delta_t)[0:int(len(yfft) / 2)]  # Wavenumber in units of cm^-1
 
         if QCF == 'Harmonic':
             prefactor = (hbar_wn*wavenumber/(boltzmann_wn*T))/(1-np.exp(-(hbar_wn*wavenumber/(boltzmann_wn*T))))
@@ -206,7 +206,7 @@ class Diffusion(object):
         elif self.sampling_method == 'bootstrap':
             for i in range(1, 5):
                 try:
-                    boots = bootstrap(self.md, bootnum=int(self.n_trials(el)/i), samples=int(self.block_l/self.corr_t))
+                    boots = bootstrap(self.md, bootnum=self.n_trials(el), samples=self.block_t)
                     break
                 except MemoryError:
                     continue
@@ -229,6 +229,8 @@ class Diffusion(object):
         D = [[], [], []]
         for i in self.msds:
             for j in range(3):
+                print(len(i[:,j][self.l_lim:]))
+                print(len(np.arange(self.l_lim,self.block_t)))
                 slope, intercept, r_value, p_value, std_err = \
                      stats.linregress(np.arange(self.l_lim, self.block_t), i[:, j][self.l_lim:])
                 D[j].append(slope / 2.0)

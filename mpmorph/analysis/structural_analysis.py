@@ -444,7 +444,7 @@ class RadialDistributionFunction(object):
         RDFs themselves are arrays of length cutoff/bin_size.
     """
 
-    def __init__(self, structures, cutoff=5.0, bin_size=0.1, step_freq=2, smooth=1,
+    def __init__(self, structures, cutoff=5.0, bin_size=0.01, step_freq=2, smooth=1,
                  title="Radial distribution functions", rdf_dict={}):
         if structures:
             self.structures = structures
@@ -516,6 +516,7 @@ class RadialDistributionFunction(object):
                     self.RDFS[i][j] = 0
         if smooth:
             self.RDFs = get_smooth_rdfs(self.RDFs, passes=self.smooth)
+
         return self.RDFs
 
     def plot_radial_distribution_functions(self, show=True, save=False):
