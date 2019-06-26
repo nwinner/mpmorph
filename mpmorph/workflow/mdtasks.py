@@ -14,6 +14,7 @@ from fireworks import FireTaskBase, Firework, FWAction, explicit_serialize
 from atomate.utils.utils import get_logger, env_chk, load_class
 from atomate.common.firetasks.glue_tasks import PassCalcLocs
 from atomate.vasp.fireworks.core import MDFW
+from atomate.vasp.firetasks.write_inputs import ModifyIncar
 from atomate.vasp.firetasks.glue_tasks import CopyVaspOutputs, get_calc_loc
 from atomate.vasp.firetasks.run_calc import RunVaspCustodian, RunVaspFake
 from atomate.vasp.database import VaspCalcDb
@@ -81,7 +82,7 @@ class SpawnMDFWTask(FireTaskBase):
     Decides if a new MD calculation should be spawned or if density is found. If so, spawns a new calculation.
     """
     required_params = ["pressure_threshold", "max_rescales", "vasp_cmd", "wall_time",
-                       "db_file", "spawn_count", "copy_calcs", "calc_home"]
+                       "db_file", "spawn_count"]
     optional_params = ["averaging_fraction", 'production']
 
     def run_task(self, fw_spec):
@@ -91,8 +92,6 @@ class SpawnMDFWTask(FireTaskBase):
         max_rescales = self["max_rescales"]
         pressure_threshold = self["pressure_threshold"]
         spawn_count = self["spawn_count"]
-        calc_home = self["calc_home"]
-        copy_calcs = self["copy_calcs"]
         production = self['production'] or False
 
         if spawn_count > max_rescales:
@@ -124,11 +123,8 @@ class SpawnMDFWTask(FireTaskBase):
                                    vasp_cmd=vasp_cmd,
                                    db_file=db_file,
                                    spawn_count=spawn_count+1,
-                                   copy_calcs=copy_calcs,
-                                   calc_home=calc_home,
                                    averaging_fraction=averaging_fraction,
                                    production=production))
-            #t.append(PassCalcLocs(name=name))
             new_fw = Firework(t, name=name)
             return FWAction(stored_data={'pressure': p}, detours=[new_fw])
 
@@ -174,7 +170,7 @@ class ProductionSpawnTask(FireTaskBase):
     """
 
     required_params = ['vasp_cmd', 'wall_time', 'spawn_count', 'production']
-    optional_params = ['checkpoint_dirs', 'db_file']
+    optional_params = ['checkpoint_dirs', 'db_file', 'modify_incar']
 
     def run_task(self, fw_spec):
 
@@ -186,6 +182,8 @@ class ProductionSpawnTask(FireTaskBase):
         db_file = self.get("db_file", None)
         spawn_count = self["spawn_count"]
         production = self['production']
+
+        #modify_incar = self['modify_incar'] or None
 
         if spawn_count > production:
             logger.info("LOGGER: Production run completed. Took {} spawns total".format(spawn_count))
@@ -199,6 +197,9 @@ class ProductionSpawnTask(FireTaskBase):
             t = []
 
             t.append(CopyVaspOutputs(calc_dir=os.getcwd(), contcar_to_poscar=True))
+
+            #if modify_incar:
+            #    t.append(ModifyIncar(incar_update=modify_incar))
 
             t.append(RunVaspCustodian(vasp_cmd=vasp_cmd, gamma_vasp_cmd=">>vasp_gam<<",
                                       handler_group="md", wall_time=wall_time))

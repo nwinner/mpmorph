@@ -244,8 +244,7 @@ def get_wf_pack_lammps_vasp(pack_input_set = {}, pre_relax_input_set = {}, md_in
 
     t.append(SpawnMDFWTask(pressure_threshold=pressure_threshold, max_rescales=max_rescales,
                            wall_time=wall_time, vasp_cmd=vasp_cmd, db_file=db_file,
-                           copy_calcs=copy_calcs, production=production, spawn_count=1,
-                           calc_home='~'))
+                           production=production, spawn_count=1))
 
     md_fw = Firework(tasks=t, name="MDFW", parents=None)
 
