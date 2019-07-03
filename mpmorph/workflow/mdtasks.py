@@ -2,12 +2,14 @@ import os
 import numpy as np
 import random
 import shutil
+import json
 
 from pymatgen.core.periodic_table import Specie
-from pymatgen.core.structure import Structure
+from pymatgen.core.structure import Structure, Molecule
 from pymatgen.io.lammps.data import LammpsData
 from pymatgen.io.vasp.outputs import Xdatcar, Vasprun
 from pymatgen.io.vasp.sets import MITMDSet
+from pymatgen.io.xyz import XYZ
 
 from fireworks import FireTaskBase, Firework, FWAction, explicit_serialize
 
@@ -273,12 +275,82 @@ class VaspMdToDbTask(FireTaskBase):
 
 @explicit_serialize
 class VaspMdToDiffusion(FireTaskBase):
-    pass
+
+    required_params = ['time_step']
+    optional_params = ['checkpoint_dirs', 'output_file']
+
+    def run_task(self, fw_spec):
+
+        time_step = fw_spec.get('time_step', 2)
+        checkpoint_dirs = fw_spec.get('checkpoint_dirs', False)
+        output_file = fw_spec.get('output_file', 'diffusion.json')
+
+        calc_dir = get_calc_loc(True, fw_spec["calc_locs"])["path"]
+        calc_loc = os.path.join(calc_dir, 'XDATCAR.gz')
+
+        if checkpoint_dirs:
+            logger.info("LOGGER: Assimilating checkpoint structures")
+            structures = []
+            for d in checkpoint_dirs:
+                structures.extend(Vasprun(os.path.join(d, 'vasprun.xml.gz')).structures)
+        else:
+            structures = Xdatcar(calc_loc).structures
+
+        db_dict = {}
+        db_dict.update({'density': float(structures[0].density)})
+        db_dict.update(structures[0].composition.to_data_dict)
+
+        logger.info("LOGGER: Calculating the diffusion coefficients...")
+        diffusion = Diffusion(structures, t_step=time_step, l_lim=50, skip_first=250, block_l=1000, ci=0.95)
+        D = {'msd': {}, 'vdos': {}}
+        for s in structures[0].types_of_specie:
+            D['msd'][s.symbol] = diffusion.getD(s.symbol)
+            D['vdos'] = vdos_diff
+
+        vdos = VDOS(structures)
+        vdos_dat = vdos.calc_vdos_spectrum(time_step=time_step * ionic_step_skip)
+        vdos_diff = vdos.calc_diffusion_coefficient(time_step=time_step * ionic_step_skip)
+
+        db_dict.update({'diffusion': D})
+
+        with open(os.path.join(output_file)) as f:
+            json = json.dumps(db_dict)
+            f.write(json)
+
+        return FWAction()
 
 
 @explicit_serialize
 class VaspMdToStructuralAnalysis(FireTaskBase):
-    pass
+
+    required_params = []
+    optional_params = ['checkpoint_dirs']
+
+    def run_task(self, fw_spec):
+
+        checkpoint_dirs = fw_spec.get('checkpoint_dirs', False)
+
+        calc_dir = get_calc_loc(True, fw_spec["calc_locs"])["path"]
+        calc_loc = os.path.join(calc_dir, 'XDATCAR.gz')
+
+        if checkpoint_dirs:
+            logger.info("LOGGER: Assimilating checkpoint structures")
+            structures = []
+            for d in checkpoint_dirs:
+                structures.extend(Vasprun(os.path.join(d, 'vasprun.xml.gz')).structures)
+        else:
+            structures = Xdatcar(calc_loc).structures
+
+        db_dict = {}
+        db_dict.update({'density': float(structures[0].density)})
+        db_dict.update(structures[0].composition.to_data_dict)
+
+        logger.info("LOGGER: Calculating radial distribution functions...")
+        rdf = RadialDistributionFunction(structures=structures)
+        rdf.get_radial_distribution_functions(nproc=4)
+        db_dict.update({'rdf': rdf.get_rdf_db_dict()})
+
+        return FWAction()
 
 
 @explicit_serialize
@@ -403,6 +475,12 @@ class MDAnalysisTask(FireTaskBase):
                                           ionic_step_offset=ionic_step_offset).structures)
         else:
             structures = Xdatcar(calc_loc).structures
+
+        #write a trajectory file for Dospt
+        molecules = []
+        for struc in structures:
+            molecules.append(Molecule(species=struc.species, coords=[s.coords for s in struc.sites]))
+        XYZ(mol=molecules).write_file('traj.xyz')
 
         db_dict = {}
         db_dict.update({'density': float(structures[0].density)})
