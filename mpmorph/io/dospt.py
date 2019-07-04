@@ -95,6 +95,14 @@ def write_supergroups(structures):
             f.writelines(str(i)+'-'+str(i+int(v)-1)+'\n')
             i += int(v)
 
+
+def write_all(structures, points, total_time, lattice, temp):
+    write_traj(structures)
+    write_supergroups(structures)
+    write_groups(structures)
+    write_masses(structures)
+    write_input(points, total_time, lattice, temp)
+
 df = df['S_SI']
 df.plot.density()
 plt.show()
