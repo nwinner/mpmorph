@@ -103,7 +103,3 @@ def write_all(structures, points, total_time, lattice, temp):
     write_masses(structures)
     write_input(points, total_time, lattice, temp)
 
-df = df['S_SI']
-df.plot.density()
-plt.show()
-
