@@ -5,6 +5,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 from pymatgen.io.vasp.outputs import Xdatcar
 
+
 def get_entropies(file='entropy', total=False):
     # Group; Entropies in eV/K [trans, rot, vib]; Total entropy in eV/K; Total entropy in J/K
 
@@ -37,6 +38,35 @@ def get_entropies(file='entropy', total=False):
     else:
         return df
 
+
+def get_dos_sg(file='dos_sg', masses_file='masses'):
+
+    atoms = {}
+
+    with open(masses_file) as f:
+        masses = f.readlines()
+        for line in masses:
+            atoms[line.split()[0]] = []
+
+    with open(file) as f:
+        lines = f.readlines()
+    ind = []
+    for i, line in enumerate(lines):
+        if "#" in line:
+            ind.append(i)
+    ind.append(len(lines))
+
+    j = 1
+    for k,v in atoms.items():
+        for i in range(ind[j-1]+1, ind[j]-1):
+            v.append([float(x) for x in lines[i].split()])
+        j += 1
+
+    dfs = {}
+    for k,v in atoms.items():
+        dfs[k] = pd.DataFrame.from_records(data=v, columns=['Freq', 'DOS_trans', 'DOS_rot', 'DOS_vib'])
+
+    return dfs
 
 def write_traj(structures):
     molecules = []
@@ -99,7 +129,26 @@ def write_supergroups(structures):
 def write_all(structures, points, total_time, lattice, temp):
     write_traj(structures)
     write_supergroups(structures)
-    write_groups(structures)
+    write_groups(structures[0])
     write_masses(structures)
     write_input(points, total_time, lattice, temp)
 
+d = "/Users/nwinner/data/flibe/dospt/11ps/"
+dfs = get_dos_sg(d+"dos_sg", masses_file=d+"masses")
+
+fig, ax1 = plt.subplots()
+
+ax1.minorticks_on()
+ax1.set_ylabel("DoS (ps)", size=24)
+ax1.set_xlabel("Frequency ($ps^{-1}$)", size=24)
+ax1.tick_params(which='major', length=8, width=1, direction='in', top=True, right=True, labelsize=14)
+ax1.tick_params(which='minor', length=2, width=.5, direction='in', top=True, right=True, labelsize=14)
+
+plt.title("Density of States for molten $2LiF-BeF_{2}$ at 973K", size=25)
+print(dfs)
+for k,v in dfs.items():
+    p = ax1.plot(v['Freq'][0:int(len(v)/3)], v['DOS_trans'][0:int(len(v)/3)], label=k)
+
+plt.legend(bbox_to_anchor=(0.975, 0.975),
+           borderaxespad=0., prop={'family': 'sans-serif', 'size': 26}, frameon=False)
+plt.show()
