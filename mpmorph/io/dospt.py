@@ -81,7 +81,7 @@ def write_masses(structure):
     if isinstance(structure, list):
         structure = structure[0]
 
-    elements = Structure.composition.elements
+    elements = structure.composition.elements
     masslist = [[e.symbol, e.data['Atomic mass']] for e in elements]
 
     with open('masses', 'w') as f:
