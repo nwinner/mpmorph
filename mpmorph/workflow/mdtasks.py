@@ -187,10 +187,10 @@ class ProductionSpawnTask(FireTaskBase):
         db_file = self.get("db_file", None)
         spawn_count = self["spawn_count"]
         production = self['production']
+        num_checkpoints = production.get('num_checkpoints',1)
+        incar_update    = production.get('incar_update', None)
 
-        #modify_incar = self['modify_incar'] or None
-
-        if spawn_count > production:
+        if spawn_count > num_checkpoints:
             logger.info("LOGGER: Production run completed. Took {} spawns total".format(spawn_count))
             return FWAction(stored_data={'production_run_completed': True})
 
@@ -203,8 +203,8 @@ class ProductionSpawnTask(FireTaskBase):
 
             t.append(CopyVaspOutputs(calc_dir=os.getcwd(), contcar_to_poscar=True))
 
-            #if modify_incar:
-            #    t.append(ModifyIncar(incar_update=modify_incar))
+            if incar_update:
+                t.append(ModifyIncar(incar_update=incar_update))
 
             t.append(RunVaspCustodian(vasp_cmd=vasp_cmd, gamma_vasp_cmd=">>vasp_gam<<",
                                       handler_group="md", wall_time=wall_time))
