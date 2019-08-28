@@ -3,6 +3,9 @@ import numpy as np
 import random
 import shutil
 import json
+import gzip
+from monty.json import MontyEncoder, MontyDecoder
+import subprocess
 
 from pymatgen.core.periodic_table import Specie
 from pymatgen.core.structure import Structure, Molecule
@@ -354,6 +357,160 @@ class VaspMdToStructuralAnalysis(FireTaskBase):
 
 
 @explicit_serialize
+class ParseCheckpointsTask(FireTaskBase):
+
+    required_params = ['checkpoint_dirs']
+    optional_params = []
+
+    def run_task(self, fw_spec):
+
+        checkpoint_dirs = self.get('checkpoint_dirs')
+
+        ionic_steps = []
+        for d in checkpoint_dirs:
+            ionic_steps.extend(Vasprun(os.path.join(d, "vasprun.xml.gz")).ionic_steps)
+
+        with gzip.open('ionic_steps.json.gz', 'wt', encoding="ascii") as zipfile:
+            json.dump(ionic_steps, zipfile, cls=MontyEncoder)
+
+
+@explicit_serialize
+class RunDospt(FireTaskBase):
+    """
+    Execute a command directly.
+
+    Required params:
+        cmd (str): the name of the full executable to run. Supports env_chk.
+    Optional params:
+        expand_vars (str): Set to true to expand variable names in the cmd.
+    """
+
+    required_params = []
+    optional_params = []
+
+    def run_task(self, fw_spec):
+        cmd = "dospt"
+        logger.info("Running command: {}".format(cmd))
+        return_code = subprocess.call(cmd, shell=True)
+        logger.info("Command {} finished running with returncode: {}".format(cmd, return_code))
+
+
+@explicit_serialize
+class MDAnalysisTask(FireTaskBase):
+    required_params = []
+    optional_params = ['time_step', 'get_rdf', 'get_diffusion', 'get_viscosity',
+                       'get_vdos', 'get_run_data', 'checkpoint_dirs', 'analysis_spec']
+
+    def run_task(self, fw_spec):
+
+        get_rdf = self.get('get_rdf') or True
+        get_diffusion = self.get('get_diffusion') or True
+        get_viscosity = self.get('get_viscosity') or True
+        get_vdos = self.get('get_vdos') or True
+        get_run_data = self.get('get_run_data') or True
+        time_step = self.get('time_step') or 2
+        checkpoint_dirs = fw_spec.get('checkpoint_dirs', False)
+
+        calc_dir = get_calc_loc(True, fw_spec["calc_locs"])["path"]
+        calc_loc = os.path.join(calc_dir, 'XDATCAR.gz')
+
+        ionic_step_skip = self.get('ionic_step_skip') or 1
+        ionic_step_offset = self.get('ionic_step_offset') or 0
+
+        analysis_spec = self.get('analysis_spec') or {}
+
+        if checkpoint_dirs:
+            logger.info("LOGGER: Assimilating checkpoint structures")
+            ionic_steps = []
+            structures = []
+            for d in checkpoint_dirs:
+                ionic_steps.extend(Vasprun(os.path.join(d,"vasprun.xml.gz")).ionic_steps)
+
+                structures.extend(Vasprun(os.path.join(d, 'vasprun.xml.gz'),
+                                          ionic_step_skip=ionic_step_skip,
+                                          ionic_step_offset=ionic_step_offset).structures)
+
+        else:
+            structures = Xdatcar(calc_loc).structures
+
+        #write a trajectory file for Dospt
+        molecules = []
+        for struc in structures:
+            molecules.append(Molecule(species=struc.species, coords=[s.coords for s in struc.sites]))
+        XYZ(mol=molecules).write_file('traj.xyz')
+
+        db_dict = {}
+        db_dict.update({'density': float(structures[0].density)})
+        db_dict.update(structures[0].composition.to_data_dict)
+        db_dict.update({'checkpoint_dirs': checkpoint_dirs})
+
+        if get_rdf:
+            logger.info("LOGGER: Calculating radial distribution functions...")
+            rdf = RadialDistributionFunction(structures=structures)
+            rdf_dat = rdf.get_radial_distribution_functions(nproc=4)
+            db_dict.update({'rdf': rdf.get_rdf_db_dict()})
+            del rdf
+            del rdf_dat
+
+        if get_vdos:
+            logger.info("LOGGER: Calculating vibrational density of states...")
+            vdos = VDOS(structures)
+            vdos_dat = vdos.calc_vdos_spectrum(time_step=time_step*ionic_step_skip)
+            vdos_diff = vdos.calc_diffusion_coefficient(time_step=time_step*ionic_step_skip)
+            db_dict.update({'vdos': vdos_dat})
+            del vdos
+            del vdos_dat
+
+        if get_diffusion:
+            logger.info("LOGGER: Calculating the diffusion coefficients...")
+            diffusion = Diffusion(structures, t_step=time_step, l_lim=50, skip_first=250, block_l=1000, ci=0.95)
+            D = {'msd':{}, 'vdos':{}}
+            for s in structures[0].types_of_specie:
+                D['msd'][s.symbol] = diffusion.getD(s.symbol)
+            if vdos_diff:
+                D['vdos'] = vdos_diff
+            db_dict.update({'diffusion': D})
+            del D
+
+        if get_viscosity:
+            logger.info("LOGGER: Calculating the viscosity...")
+            viscosities = []
+            if checkpoint_dirs:
+                for dir in checkpoint_dirs:
+                    visc = Viscosity(dir).calc_viscosity()
+                    viscosities.append(visc['viscosity'])
+            viscosity_dat = {'viscosity': np.mean(viscosities), 'StdDev': np.std(viscosities)}
+            db_dict.update({'viscosity': viscosity_dat})
+            del viscosity_dat
+
+        if get_run_data:
+            if checkpoint_dirs:
+                logger.info("LOGGER: Assimilating run stats...")
+                data = MD_Data()
+                for directory in checkpoint_dirs:
+                    data.parse_md_data(directory)
+                md_stats = data.get_md_stats()
+            else:
+                logger.info("LOGGER: Getting run stats...")
+                data = MD_Data()
+                data.parse_md_data(calc_dir)
+                md_stats = data.get_md_stats()
+            db_dict.update({'md_data': md_stats})
+
+        if analysis_spec:
+            logger.info("LOGGER: Adding user-specified data...")
+            db_dict.update(analysis_spec)
+
+        logger.info("LOGGER: Pushing data to database collection...")
+        db_file = env_chk(">>db_file<<", fw_spec)
+        db = VaspCalcDb.from_db_file(db_file, admin=True)
+        db.collection = db.db["md_data"]
+        db.collection.insert_one(db_dict)
+
+        return FWAction()
+
+
+@explicit_serialize
 class PackToLammps(FireTaskBase):
 
     required_params = ['box_size']
@@ -443,116 +600,6 @@ class LammpsToVaspMD(FireTaskBase):
 
 
 @explicit_serialize
-class MDAnalysisTask(FireTaskBase):
-    required_params = []
-    optional_params = ['time_step', 'get_rdf', 'get_diffusion', 'get_viscosity',
-                       'get_vdos', 'get_run_data', 'checkpoint_dirs', 'analysis_spec']
-
-    def run_task(self, fw_spec):
-
-        get_rdf = self.get('get_rdf') or True
-        get_diffusion = self.get('get_diffusion') or True
-        get_viscosity = self.get('get_viscosity') or True
-        get_vdos = self.get('get_vdos') or True
-        get_run_data = self.get('get_run_data') or True
-        time_step = self.get('time_step') or 2
-        checkpoint_dirs = fw_spec.get('checkpoint_dirs', False)
-
-        calc_dir = get_calc_loc(True, fw_spec["calc_locs"])["path"]
-        calc_loc = os.path.join(calc_dir, 'XDATCAR.gz')
-
-        ionic_step_skip = self.get('ionic_step_skip') or 1
-        ionic_step_offset = self.get('ionic_step_offset') or 0
-
-        analysis_spec = self.get('analysis_spec') or {}
-
-        if checkpoint_dirs:
-            logger.info("LOGGER: Assimilating checkpoint structures")
-            structures = []
-            for d in checkpoint_dirs:
-                structures.extend(Vasprun(os.path.join(d, 'vasprun.xml.gz'),
-                                          ionic_step_skip=ionic_step_skip,
-                                          ionic_step_offset=ionic_step_offset).structures)
-        else:
-            structures = Xdatcar(calc_loc).structures
-
-        #write a trajectory file for Dospt
-        molecules = []
-        for struc in structures:
-            molecules.append(Molecule(species=struc.species, coords=[s.coords for s in struc.sites]))
-        XYZ(mol=molecules).write_file('traj.xyz')
-
-        db_dict = {}
-        db_dict.update({'density': float(structures[0].density)})
-        db_dict.update(structures[0].composition.to_data_dict)
-
-        if get_rdf:
-            logger.info("LOGGER: Calculating radial distribution functions...")
-            rdf = RadialDistributionFunction(structures=structures)
-            rdf_dat = rdf.get_radial_distribution_functions(nproc=4)
-            db_dict.update({'rdf': rdf.get_rdf_db_dict()})
-            del rdf
-            del rdf_dat
-
-        if get_vdos:
-            logger.info("LOGGER: Calculating vibrational density of states...")
-            vdos = VDOS(structures)
-            vdos_dat = vdos.calc_vdos_spectrum(time_step=time_step*ionic_step_skip)
-            vdos_diff = vdos.calc_diffusion_coefficient(time_step=time_step*ionic_step_skip)
-            db_dict.update({'vdos': vdos_dat})
-            del vdos
-            del vdos_dat
-
-        if get_diffusion:
-            logger.info("LOGGER: Calculating the diffusion coefficients...")
-            diffusion = Diffusion(structures, t_step=time_step, l_lim=50, skip_first=250, block_l=1000, ci=0.95)
-            D = {'msd':{}, 'vdos':{}}
-            for s in structures[0].types_of_specie:
-                D['msd'][s.symbol] = diffusion.getD(s.symbol)
-            if vdos_diff:
-                D['vdos'] = vdos_diff
-            db_dict.update({'diffusion': D})
-            del D
-
-        if get_viscosity:
-            logger.info("LOGGER: Calculating the viscosity...")
-            viscosities = []
-            if checkpoint_dirs:
-                for dir in checkpoint_dirs:
-                    visc = Viscosity(dir).calc_viscosity()
-                    viscosities.append(visc['viscosity'])
-            viscosity_dat = {'viscosity': np.mean(viscosities), 'StdDev': np.std(viscosities)}
-            db_dict.update({'viscosity': viscosity_dat})
-            del viscosity_dat
-
-        if get_run_data:
-            if checkpoint_dirs:
-                logger.info("LOGGER: Assimilating run stats...")
-                data = MD_Data()
-                for directory in checkpoint_dirs:
-                    data.parse_md_data(directory)
-                md_stats = data.get_md_stats()
-            else:
-                logger.info("LOGGER: Getting run stats...")
-                data = MD_Data()
-                data.parse_md_data(calc_dir)
-                md_stats = data.get_md_stats()
-            db_dict.update({'md_data': md_stats})
-
-        if analysis_spec:
-            logger.info("LOGGER: Adding user-specified data...")
-            db_dict.update(analysis_spec)
-
-        logger.info("LOGGER: Pushing data to database collection...")
-        db_file = env_chk(">>db_file<<", fw_spec)
-        db = VaspCalcDb.from_db_file(db_file, admin=True)
-        db.collection = db.db["md_data"]
-        db.collection.insert_one(db_dict)
-
-        return FWAction()
-
-
-@explicit_serialize
 class WriteVaspFromLammpsAndIOSet(FireTaskBase):
 
     required_params = ["vasp_input_set", "structure_loc"]
@@ -573,21 +620,44 @@ class WriteVaspFromLammpsAndIOSet(FireTaskBase):
 
 
 @explicit_serialize
-class TransmuteTask(FireTaskBase):
+class MultiSpawn(FireTaskBase):
 
-    required_params = ['structure', 'species']
+    required_params = ["spawn_type", "spawn_number"]
+    optional_params = ["wall_time", "vasp_cmd", "num_checkpoints"]
+
+    def run_task(self, fw_spec):
+
+        spawn_type = self.get('spawn_type')
+        spawn_number = self.get('spawn_number')
+
+        wall_time = self.get('wall_time', 19200)
+        vasp_cmd = self.get('vasp_cmd', ">>vasp_cmd<<")
+        num_checkpoints = self.get('num_checkpoints', 1)
+
+        fws = []
+        for i in range(spawn_number):
+            t = []
+            t.append(ProductionSpawnTask(wall_time=wall_time,
+                                         vasp_cmd=vasp_cmd,
+                                         db_file=None,
+                                         spawn_count=0,
+                                         production=num_checkpoints))
+            fws.append(Firework(t, name="Multispawn_{}_FW".format(i+1)))
+
+        return FWAction(detours=[fws])
+
+
+@explicit_serialize
+class SpawnFromTrajectory(FireTaskBase):
+
+    required_params = ['wf_name', 'trajectory']
     optional_params = []
 
     def run_task(self, fw_spec):
 
-        structure = self.get('structure')
-        species = self.get('species')
+        logger.info("Spawning WFs from completed MD Trajectory...")
 
-        sites = structure.sites
-        indices = []
-        for i, s in enumerate(sites):
-            if s.specie.symbol == species[0]:
-                indices.append(i)
-        index = random.choice(indices)
-        structure.replace(index, species=species[1],
-                          properties={'charge': Specie(species[1]).oxi_state})
+        new_fw = Firework(t, name=name, spec={'checkpoint_dirs': prev_checkpoint_dirs})
+
+        return FWAction(stored_data={'production_run_completed': False},
+                        update_spec={'checkpoint_dirs': prev_checkpoint_dirs}, detours=[new_fw])
