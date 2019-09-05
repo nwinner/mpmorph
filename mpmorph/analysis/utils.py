@@ -8,6 +8,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy import signal
 import math, os, sys, time
+from statsmodels.tsa.stattools import acf
 
 from pymatgen.io.lammps.outputs import parse_lammps_dumps
 from pymatgen.io.vasp.outputs import Xdatcar
@@ -233,3 +234,49 @@ def autocorrelation(v, normalize=True):
         ynorm = np.ones(np.shape(v))
     autocor = signal.fftconvolve(v, v[::-1], mode='full')[len(v) - 1:] / ynorm
     return autocor
+
+
+def statistical_inefficiency(A_n, mintime=3):
+    # Create np copies of input arguments.
+    A_n = np.array(A_n)
+
+    # Get the length of the timeseries.
+    N = A_n.size
+
+    C_t = acf(A_n, fft=True, unbiased=True, nlags=N)
+    t_grid = np.arange(N).astype('float')
+    g_t = 2.0 * C_t * (1.0 - t_grid / float(N))
+
+    try:
+        ind = np.where((C_t <= 0) & (t_grid > mintime))[0][0]
+    except IndexError:
+        ind = N
+
+    g = 1.0 + g_t[1:ind].sum()
+    g = max(1.0, g)
+
+    return g  # , g_t, C_t
+
+
+def detectEquilibration(A_t, fast=True, nskip=1):
+
+    A_t = np.array(A_t)
+    T = A_t.size
+
+    # Special case if timeseries is constant.
+    if A_t.std() == 0.0:
+        return (0, 1, 1)  # Changed from Neff=N to Neff=1 after issue #122
+
+    g_t = np.ones([T - 1], np.float32)
+    Neff_t = np.ones([T - 1], np.float32)
+    for t in range(0, T - 1, nskip):
+        try:
+            g_t[t] = statistical_inefficiency(A_t[t:T])
+        except:  # Fix for issue https://github.com/choderalab/pymbar/issues/122
+            g_t[t] = (T - t + 1)
+        Neff_t[t] = (T - t + 1) / g_t[t]
+    Neff_max = Neff_t.max()
+    t = Neff_t.argmax()
+    g = g_t[t]
+
+    return (t, g, Neff_max)

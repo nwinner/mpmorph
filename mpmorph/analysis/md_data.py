@@ -46,7 +46,8 @@ class MD_Data:
             raise FileNotFoundError
 
         self.composition = v.structures[0].composition
-        print(self.composition.weight)
+        self.volume = v.structures[0].volume
+
         nsteps = v.nionic_steps
         self.nsteps += nsteps
         if self.time:
@@ -85,6 +86,10 @@ class MD_Data:
     @property
     def get_temp(self):
         return self.temp
+
+    @property
+    def get_volume(self):
+        return self.volume
 
     def get_md_data(self):
         return self.md_data

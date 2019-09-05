@@ -10,6 +10,7 @@ from pymatgen.core.periodic_table import Element
 from pymatgen.io.vasp.outputs import Vasprun, Xdatcar
 from astropy.stats import bootstrap
 from scipy.signal import savgol_filter
+from statsmodels.tsa.stattools import acf as autocorr
 
 from mpmorph.analysis.utils import autocorrelation, power_spectrum, calc_derivative, xdatcar_to_df
 
@@ -193,10 +194,10 @@ class Diffusion(object):
         msds = []
 
         # get the correlation time from the ACF
-        mean_md = [np.mean(np.mean(x, axis=1), axis=0) for x in self.md]
-        acf = autocorrelation(mean_md, normalize=True)
-        tao = np.ceil(np.trapz(acf, np.arange(0, len(acf))))
-        self.corr_t = int(tao)
+        #mean_md = [np.mean(np.mean(x, axis=1), axis=0) for x in self.md]
+        #acf = autocorrelation(mean_md, normalize=True)
+        #tao = np.ceil(np.trapz(acf, np.arange(0, len(acf))))
+        #self.corr_t = int(tao)
 
         if self.sampling_method == 'block':
             for i in range(self.n_origins):
@@ -204,22 +205,12 @@ class Diffusion(object):
                 msds.append(np.mean(su, axis=1))
 
         elif self.sampling_method == 'bootstrap':
-            for i in range(1, 5):
-                try:
-                    boots = bootstrap(self.md, bootnum=self.n_trials(el), samples=self.block_t)
-                    break
-                except MemoryError:
-                    continue
+            boots = bootstrap(self.md, bootnum=self.n_trials(el), samples=self.block_t)
             for boot in boots:
                 su = np.square(np.cumsum(boot, axis=0))
                 msds.append(np.mean(su, axis=1))
 
         self.msds = msds
-
-    def plot_block_msds(self):
-        for i in self.msds:
-            plt.plot(i)
-        plt.show()
 
     def getD(self, el):
         """
@@ -229,8 +220,6 @@ class Diffusion(object):
         D = [[], [], []]
         for i in self.msds:
             for j in range(3):
-                print(len(i[:,j][self.l_lim:]))
-                print(len(np.arange(self.l_lim,self.block_t)))
                 slope, intercept, r_value, p_value, std_err = \
                      stats.linregress(np.arange(self.l_lim, self.block_t), i[:, j][self.l_lim:])
                 D[j].append(slope / 2.0)
@@ -247,6 +236,33 @@ class Diffusion(object):
         self.D_avg = np.sum(self.D_i) / 3.0
         self.D_avg_std = np.std(np.sum(D, axis=0) / 3.0)*tn
         return self.D_dict
+
+    def get_block_msds(self):
+
+        lower_bound = []
+        mean_msd = []
+        upper_bound = []
+
+        xyz_av = []
+        for msd in self.msds:
+            xyz_av.append(np.mean(msd, axis=1))
+
+        for i in range(len(xyz_av[0])):
+            values = []
+            for j in range(len(xyz_av)):
+                values.append(xyz_av[j][i])
+            lower_bound.append(np.min(values))
+            upper_bound.append(np.max(values))
+            mean_msd.append(np.mean(values))
+
+        return (mean_msd, lower_bound, upper_bound)
+
+    def plot_block_msds(self):
+
+        mean_msd, lower_bound, upper_bound = self.get_block_msds()
+        plt.plot(mean_msd)
+        plt.fill_between(np.arange(len(mean_msd)), lower_bound, upper_bound, alpha=.3)
+        plt.show()
 
     @property
     def D_dict(self):
@@ -284,7 +300,7 @@ class Diffusion(object):
         return tao_dict
 
     def autocorrelation(self):
-        df = self.positions
+        df = xdatcar_to_df(self.structures)
 
         def disp(x):
             return np.gradient(x, axis=0)
@@ -308,9 +324,10 @@ class Diffusion(object):
             mean_acf = np.mean(acf, axis=0)
             self.acfs[key] = mean_acf
 
+        D = {}
         for key, value in self.acfs.items():
-            spectrum = power_spectrum(value)
-            self.vdos[key] = spectrum[0:int(len(spectrum) / 2)][0:200]
+            D[key.symbol] = np.trapz(value, np.arange(0, len(value)) * time_step) * 0.1 / len(value)  # cm^2/s
+        return D
 
 
 class Activation(object):
@@ -383,27 +400,8 @@ class Activation(object):
 class VDOS(object):
 
     def __init__(self, input, vdos_dict={}):
-        if input is None:
-            pass
-        elif isinstance(input, Xdatcar):
-            self.positions = xdatcar_to_df(input)
-        elif isinstance(input, list):
-            try:
-                self.positions = xdatcar_to_df(input)
-            except:
-                raise TypeError("ERROR: You have provided a list of objects not recognized by VDOS")
-        elif os.path.isfile(input):
-            self.positions = xdatcar_to_df(input)
-        elif os.path.isdir(input):
-            if os.path.isfile(os.path.join(input, 'XDATCAR.gz')):
-                self.positions = xdatcar_to_df(os.path.join(input, 'XDATCAR.gz'))
-            elif os.path.isfile(os.path.join(input, 'XDATCAR')):
-                self.positions = xdatcar_to_df(os.path.join(input, 'XDATCAR'))
-            else:
-                raise FileNotFoundError("ERROR: Could not located XDATCAR in the provided file.")
-        else:
-            raise TypeError("ERROR: The provided input is either not and XDATCAR object ",
-                            "or is not a path to an XDATCAR file")
+
+        self.positions = input
 
         self.vel  = {}
         self.acfs = {}
@@ -425,14 +423,15 @@ class VDOS(object):
             return np.divide(np.diff(x, axis=0), time_step)
 
         ids = {}
-        types = df.type.unique()
+        types = df.element.unique()
+
         for i_type in types:
-            ids[i_type] = df[(df.Timestep == 1) & (df.type == i_type)]['Id'].values
+            ids[i_type] = df[(df.Timestep == df.iloc[0]['Timestep']) & (df.element == i_type)]['id'].values
 
         for key, value in ids.items():
             results = []
             for id in value:
-                data = df[df['Id'] == id][['x', 'y', 'z']]
+                data = df[df['id'] == id][['x', 'y', 'z']]
                 results.append(np.mean(vel(data), axis=1))
             self.vel[key] = results
 
@@ -440,8 +439,8 @@ class VDOS(object):
             acf = []
             acf_norm = []
             for v in value:
-                acf.append(autocorrelation(v, normalize=False))
-                acf_norm.append(autocorrelation(v, normalize=True))
+                #acf.append(autocorrelation(v, normalize=True)) # TODO Why is acf from statstools incorrect
+                acf_norm.append(autocorr(v, unbiased=True, fft=True, nlags=len(v)))
             mean_acf = np.mean(acf, axis=0)
             mean_acf_norm = np.mean(acf_norm, axis=0)
             self.acfs[key] = mean_acf
@@ -451,7 +450,7 @@ class VDOS(object):
             spectrum = power_spectrum(value)*Element(key).atomic_mass
             intensity = spectrum / np.max(spectrum)
             self.freq = list(np.fft.fftfreq(len(spectrum), time_step)[0:int(len(spectrum) /2)])
-            self.vdos[key.symbol] = list(intensity[0:int(len(intensity)/2)])
+            self.vdos[key] = list(intensity[0:int(len(intensity)/2)])
 
         vdos_dict = self.vdos.copy()
         vdos_dict.update({'freq': self.freq})
@@ -463,31 +462,65 @@ class VDOS(object):
             D[key.symbol] = np.trapz(value, np.arange(0, len(value))*time_step) * 0.1 /len(value) #cm^2/s
         return D
 
-    def plot_vdos(self, show=True, save=False, smooth=False):
+    def plot_vdos(self, show=True, save=False, smooth=False, include_acf=False):
 
-        fig, axs = plt.subplots()
+        if include_acf:
 
-        axs.minorticks_on()
-        axs.tick_params(which='major', length=8, width=1, direction='in', top=True, right=True, labelsize=14)
-        axs.tick_params(which='minor', length=2, width=.5, direction='in', top=True, right=True, labelsize=14)
+            fig, axs = plt.subplots(2)
 
-        for k,v in self.vdos.items():
-            _vdos = v
-            if smooth:
-                _vdos = savgol_filter(_vdos, window_length=51, polyorder=3)
-            p = axs.plot(self.freq, _vdos, label=k)
-            axs.fill(self.freq, _vdos, alpha=0.3, color=p[-1].get_color())
+            axs[0].minorticks_on()
+            axs[0].tick_params(which='major', length=8, width=1, direction='in', top=True, right=True, labelsize=14)
+            axs[0].tick_params(which='minor', length=2, width=.5, direction='in', top=True, right=True, labelsize=14)
+            axs[1].minorticks_on()
+            axs[1].tick_params(which='major', length=8, width=1, direction='in', top=True, right=True, labelsize=14)
+            axs[1].tick_params(which='minor', length=2, width=.5, direction='in', top=True, right=True, labelsize=14)
 
-        axs.set_xlabel('Frequency ($fs^{-1}$)', size=22)
-        axs.set_xscale('log')
-        axs.set_ylabel('Velocity Density of States (a.u.)', size=14)
+            for k,v in self.acfs_norm.items():
+                axs[0].plot(v[:100])
 
-        plt.legend()
-        if save:
-            plt.savefig('vdos.png', fmt='png')
-        if show:
-            plt.show()
-        return plt
+            for k,v in self.vdos.items():
+                _vdos = v
+                if smooth:
+                    _vdos = savgol_filter(_vdos, window_length=51, polyorder=3)
+                p = axs[1].plot(self.freq, _vdos, label=k)
+                axs[1].fill(self.freq, _vdos, alpha=0.3, color=p[-1].get_color())
+
+            axs[1].set_xlabel('Frequency ($fs^{-1}$)', size=22)
+            #axs[1].set_xscale('log')
+            axs[1].set_ylabel('Velocity Density of States (a.u.)', size=14)
+
+            plt.legend()
+            if save:
+                plt.savefig('vdos.png', fmt='png')
+            if show:
+                plt.show()
+            return plt
+
+        else:
+
+            fig, axs = plt.subplots()
+
+            axs.minorticks_on()
+            axs.tick_params(which='major', length=8, width=1, direction='in', top=True, right=True, labelsize=14)
+            axs.tick_params(which='minor', length=2, width=.5, direction='in', top=True, right=True, labelsize=14)
+
+            for k, v in self.vdos.items():
+                _vdos = v
+                if smooth:
+                    _vdos = savgol_filter(_vdos, window_length=51, polyorder=3)
+                p = axs.plot(self.freq, _vdos, label=k)
+                axs.fill(self.freq, _vdos, alpha=0.3, color=p[-1].get_color())
+
+            axs.set_xlabel('Frequency ($fs^{-1}$)', size=22)
+            axs.set_xscale('log')
+            axs.set_ylabel('Velocity Density of States (a.u.)', size=14)
+
+            plt.legend()
+            if save:
+                plt.savefig('vdos.png', fmt='png')
+            if show:
+                plt.show()
+            return plt
 
 
 class Viscosity(object):

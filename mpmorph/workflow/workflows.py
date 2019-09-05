@@ -1,6 +1,5 @@
 from fireworks import Workflow, Firework
 from atomate.vasp.fireworks.core import MDFW, OptimizeFW, StaticFW
-from mpmorph.workflow.mdtasks import SpawnMDFWTask, CopyCalsHome
 from mpmorph.runners.amorphous_maker import AmorphousMaker
 from mpmorph.analysis.structural_analysis import get_sample_structures
 from atomate.vasp.firetasks.glue_tasks import CopyVaspOutputs
@@ -10,6 +9,7 @@ from atomate.lammps.workflows.core import PackmolFW, LammpsFW
 from pymatgen.core.structure import Structure
 
 from mpmorph.workflow.mdtasks import LammpsToVaspMD, MDAnalysisTask, PackToLammps, WriteVaspFromLammpsAndIOSet
+from mpmorph.workflow.firetasks.glue_tasks import *
 
 import os
 
@@ -262,6 +262,12 @@ def get_wf_pack_lammps_vasp(pack_input_set = {}, pre_relax_input_set = {}, md_in
     wf = Workflow(fws, name=wfname, metadata=metadata)
 
     return wf
+
+
+def get_wf_raman_from_trajectory(structures, step_freq):
+
+    strucs = [structures[i*step_freq] for i in range(len(structures))]
+
 
 
 

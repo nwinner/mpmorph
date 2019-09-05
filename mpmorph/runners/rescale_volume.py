@@ -1,6 +1,6 @@
 import numpy as np
 from pymatgen.io.vasp import Poscar
-
+from scipy.optimize import curve_fit
 
 class RescaleVolume(object):
     """
@@ -69,32 +69,27 @@ class RescaleVolume(object):
 
         return self.structure
 
-    def by_EOS(self, p_v, eos='polynomial'):
+    def by_EOS(self, p_v, eos='BirchMurnaghan'):
         """
         Args:
             p_v (numpy array): an array of pressure-volume pairs; e.g. p_v = [[p1,v1],[p2,v2],...]
-            eos (str): type of equation of state to fit to. Currently only polynomial is supported.
-                - 'polynomial': if p_v has two elements, fits line, otherwise; quadratic polynomial
-                - 'Murnaghan': Murnaghan EOS. Not implemented yet.
-                - 'BirchMurnaghan': Birch-Murnaghan EOS.
         Returns:
             self.structure
         """
         v1 = self.structure.volume
-        if eos=='polynomial':
+        if eos == 'polynomial':
             v2_v1 = poly_rescale(p_v, target_pressure=self.target_pressure)/v1
             self.rescale_structure_volume(v2_v1)
             self.initial_pressure = self.target_pressure
-        elif eos=='Murnaghan':
+        elif eos == 'Murnaghan':
             raise ValueError("not implemented yet")
-        elif eos=='BirchMurnaghan':
-            v2_v1 = BirchMurnaghan_rescale(p_v, target_pressure=self.target_pressure)/v1
+        elif eos == 'BirchMurnaghan':
+            v2_v1 = birch_murnaghan_rescale(p_v, target_pressure=self.target_pressure)/v1
             self.rescale_structure_volume(v2_v1)
             self.initial_pressure = self.target_pressure
         else:
             raise ValueError("Unknown EOS. Volume not rescaled.")
         return self.structure
-
 
     @classmethod
     def of_poscar(cls, poscar_path, initial_pressure=0.0, initial_temperature=1000.0,
@@ -108,6 +103,7 @@ class RescaleVolume(object):
         return cls(poscar.structure, initial_pressure=initial_pressure, initial_temperature=initial_temperature,
                          target_pressure=target_pressure, target_temperature=target_temperature,
                          alpha=alpha, beta=beta, poscar=poscar)
+
 
 def poly_rescale(p_v, target_pressure=0.0):
     """
@@ -125,38 +121,7 @@ def poly_rescale(p_v, target_pressure=0.0):
     return eqs(target_pressure)
 
 
-def BirchMurnaghanPV_EOS(V,params):
-    """
-    Args:
-        V: volume
-        params: tuple of B0,V0,B0p
-    Returns:
-        Pressure of Birch-Murnaghan EOS at V with given parameters E0, B0, V0 and B0p
-    """
-    V0, B0, B0p = params[0], params[1], params[2]
-    n = (V0/V)**(1./3) # Note this definition is different from the Energy EOS
-    p = 3.0/2.0*B0*(n**7-n**5)*(1.+3./4*(B0p-4)*(n**2-1.0))
-    return p
-
-
-def fit_BirchMurnaghanPV_EOS(p_v):
-    # Borrows somewhat from pymatgen/io/abinitio/EOS
-    # Initial guesses for the parameters
-    from scipy.optimize import leastsq
-    eqs = np.polyfit(p_v[:,1], p_v[:,0], 2)
-    V0 = np.mean(p_v[:,1]) # still use mean to ensure we are at reasonable volumes
-    B0 = -1*(2*eqs[0]*V0**2+eqs[1]*V0)
-    B0p = 4.0
-    initial_params = (V0,B0,B0p)
-    Error=lambda params,x,y: BirchMurnaghanPV_EOS(x,params) - y
-    found_params, check = leastsq(Error,initial_params,args=(p_v[:,1],p_v[:,0]))
-    if check not in [1,2,3,4]:
-        raise ValueError("fitting not converged")
-    else:
-        return found_params
-
-
-def BirchMurnaghan_rescale(p_v, target_pressure=0):
+def birch_murnaghan_rescale(p_v, target_pressure=0.0):
     """
     Calls fit_BirchMurnaghanPV_EOS to find params of EOS and returns V corresponding to target_pressure
     Args:
@@ -166,12 +131,36 @@ def BirchMurnaghan_rescale(p_v, target_pressure=0):
     Returns:
 
     """
-    params = fit_BirchMurnaghanPV_EOS(p_v)
+    params = fit_birch_murnaghan(p_v)
     if target_pressure==0:
-        return params[0] #This is V0
+        return params[2] # This is V0
     else:
         # TODO: find volume corresponding to this target_pressure
         pass
+
+
+def birch_murnaghan(volume, b0, b1, v0):
+    """
+    Birch Murnaghan equation from PRB 70, 224107
+    """
+    eta = (v0 / volume)
+
+    return 1.5 * b0 * (np.power(eta, 7. / 3.) - np.power(eta, 5. / 3.)) * (
+                1 + .75 * (b1 - 4) * (np.power(eta, 2. / 3.) - 1))
+
+
+def fit_birch_murnaghan(p_v):
+
+    x = [pv[1] for pv in p_v]
+    y = [pv[0] for pv in p_v]
+
+    v0 = np.mean(x)
+    b0 = 2 * a * v0
+    b1 = 4  # b1 is usually a small number like 4
+
+    params, pcov = curve_fit(birch_murnaghan, x, y, p0=[b0, b1, v0], maxfev=1000000)
+
+    return params
 
 
 
