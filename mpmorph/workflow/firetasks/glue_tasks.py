@@ -22,21 +22,50 @@ logger = get_logger(__name__)
 @explicit_serialize
 class SpawnMDFWTask(FireTaskBase):
     """
-    Decides if a new MD calculation should be spawned or if density is found. If so, spawns a new calculation.
+    The spawn task dictating volume searching. Given a VASP run, decide if the MD simulation has operated at the
+    equilibrium density. i.e. see if the ensemble average pressure is approximately zero. If it is close enough to
+    the equilibrium density, either complete the current sequence of calculations, or alternatively you can take
+    the equilibrium density and proceed to a production run (via ProductionSpawnTask).
+
+    Required parameters:
+
+        pressure_threshold: (int or float) The window of acceptable pressures after which to stop.
+            i.e: for pressure threshold = 5, if the pressure was -2.4, we'd consider it complete
+
+        max_rescales: (int) The maximum number of times to rescale the volume before canceling the sequence
+        vasp_cmd: (str) command to run vasp
+        wall_time: (int) wall time, in seconds
+        db_file: (str) path to file with database credentials
+        spawn_count: (int) The number of spawns/rescales that have been executed prior to the current one
+
+    Optional parameters:
+
+        averaging_fraction: (float) given a VASP run of X steps, get the ensemble averaged pressure only for
+            steps X*(1-averaging_fraction) to the end
+            Default: .5
+
+        production: (dict) The production run dictionary. If this quantity is not set, then the sequence of
+            runs will stop when the density is found. If it is set, it dictates how the production
+            run will be carried out. (see SingleMultiSpawn)
+
+        p_v: (list) a list of tuples of the form [(pressure1, volume1),(pressure2, volume2),...] that is updated
+            with each successive iteration of the spawn task. It is used to calcualte equilibrium volume via
+            equation of state fitting once at least 3 datapoints exist.
+
     """
     required_params = ["pressure_threshold", "max_rescales", "vasp_cmd", "wall_time",
                        "db_file", "spawn_count"]
-    optional_params = ["averaging_fraction", 'production']
+    optional_params = ["averaging_fraction", 'production', 'p_v']
 
     def run_task(self, fw_spec):
-        vasp_cmd = self["vasp_cmd"]
-        wall_time = self["wall_time"]
-        db_file = self["db_file"]
-        max_rescales = self["max_rescales"]
-        pressure_threshold = self["pressure_threshold"]
-        spawn_count = self["spawn_count"]
-        production = self['production'] or {}
-        p_v = self['p_v'] or []
+        vasp_cmd = self.get("vasp_cmd")
+        wall_time = self.get("wall_time")
+        db_file = self.get("db_file")
+        max_rescales = self.get("max_rescales")
+        pressure_threshold = self.get("pressure_threshold")
+        spawn_count = self.get("spawn_count")
+        production = self.get('production', {})
+        p_v = self.get('p_v', [])
 
         if spawn_count > max_rescales:
             logger.info("WARNING: The max number of rescales has been reached... stopping density search.")
@@ -192,7 +221,7 @@ class SingleMultiSpawn(FireTaskBase):
                                                      'num_parallel': i+1,
                                                      'incar_update': incar_update}))
             fws.append(Firework(t, name="Multispawn_{}_FW".format(i+1)))
-        return FWAction(detours=[fws])
+        return FWAction(additions=[fws])
 
 
 @explicit_serialize

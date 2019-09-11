@@ -12,9 +12,6 @@ from pymatgen.io.vasp.outputs import Vasprun, Xdatcar
 from pymatgen.analysis.structure_analyzer import VoronoiAnalyzer
 
 from atomate.utils.utils import get_logger, env_chk, load_class
-from atomate.common.firetasks.glue_tasks import PassCalcLocs
-from atomate.vasp.fireworks.core import MDFW
-from atomate.vasp.firetasks.write_inputs import ModifyIncar
 from atomate.vasp.firetasks.glue_tasks import CopyVaspOutputs, get_calc_loc
 from atomate.vasp.database import VaspCalcDb
 
