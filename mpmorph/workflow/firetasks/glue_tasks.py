@@ -194,8 +194,8 @@ class ProductionSpawnTask(FireTaskBase):
 @explicit_serialize
 class SingleMultiSpawn(FireTaskBase):
 
-    required_params = ["spawn_type", "spawn_number"]
-    optional_params = ["wall_time", "vasp_cmd", "num_checkpoints"]
+    required_params = ["spawn_number"]
+    optional_params = ["wall_time", "vasp_cmd", "num_checkpoints", 'incar_update']
 
     def run_task(self, fw_spec):
 
