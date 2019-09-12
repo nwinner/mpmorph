@@ -145,20 +145,17 @@ class ProductionSpawnTask(FireTaskBase):
     optional_params = ['checkpoint_dirs', 'db_file', 'modify_incar']
 
     def run_task(self, fw_spec):
+
+        prev_checkpoint_dirs = fw_spec.get("checkpoint_dirs", [])  # If this is the first spawn, have no prev dirs
+        prev_checkpoint_dirs.append(os.getcwd())  # add the current directory to the list of checkpoints
+
         vasp_cmd = self["vasp_cmd"]
         wall_time = self["wall_time"]
         db_file = self.get("db_file", None)
         spawn_count = self["spawn_count"]
         production = self['production']
-
-        num_checkpoints = production.get('num_checkpoints', 1)
+        num_checkpoints = production.get('num_checkpoints',1)
         incar_update = production.get('incar_update', None)
-        num_parallel = str(production.get('num_parallel', 1))  # If there are parallel simulations, which num is this one?
-
-        prev_checkpoint_dirs = self.get("checkpoint_dirs", {})  # If this is the first spawn, create the dict
-        if num_parallel not in prev_checkpoint_dirs.keys():  # If first spawn of this parallel run, make array
-            prev_checkpoint_dirs[str(num_parallel)] = []
-        prev_checkpoint_dirs[str(num_parallel)].append(os.getcwd())  # add current directory to the list of checkpoints
 
         if spawn_count > num_checkpoints:
             logger.info("LOGGER: Production run completed. Took {} spawns total".format(spawn_count))
@@ -187,36 +184,6 @@ class ProductionSpawnTask(FireTaskBase):
 
             return FWAction(stored_data={'production_run_completed': False},
                             update_spec={'checkpoint_dirs': prev_checkpoint_dirs}, detours=[new_fw])
-
-
-@explicit_serialize
-class SingleMultiSpawn(FireTaskBase):
-
-    required_params = ["spawn_number"]
-    optional_params = ["wall_time", "vasp_cmd", "num_checkpoints", 'incar_update']
-
-    def run_task(self, fw_spec):
-
-        spawn_type = self.get('spawn_type')
-        spawn_number = self.get('spawn_number')
-
-        wall_time = self.get('wall_time', 19200)
-        vasp_cmd = self.get('vasp_cmd', ">>vasp_cmd<<")
-        num_checkpoints = self.get('num_checkpoints', 1)
-        incar_update = self.get('incar_update', None)
-
-        fws = []
-        for i in range(spawn_number):
-            t = []
-            t.append(ProductionSpawnTask(wall_time=wall_time,
-                                         vasp_cmd=vasp_cmd,
-                                         db_file=None,
-                                         spawn_count=1,
-                                         production={'num_checkpoints': num_checkpoints,
-                                                     'num_parallel': i+1,
-                                                     'incar_update': incar_update}))
-            fws.append(Firework(t, name="Multispawn_{}_FW".format(i+1)))
-        return FWAction(detours=[fws])
 
 
 @explicit_serialize
