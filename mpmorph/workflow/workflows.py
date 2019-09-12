@@ -6,9 +6,9 @@ from mpmorph.analysis.structural_analysis import get_sample_structures
 from atomate.lammps.workflows.core import PackmolFW, LammpsFW
 from pymatgen.core.structure import Structure
 
-from mpmorph.workflow.mdtasks import LammpsToVaspMD, PackToLammps, WriteVaspFromLammpsAndIOSet
-from mpmorph.workflow.firetasks.glue_tasks import *
-from mpmorph.workflow.firetasks.parse_outputs import *
+from mpmorph.workflow.mdtasks import PackToLammps, WriteVaspFromLammpsAndIOSet
+from mpmorph.workflow.firetasks.glue_tasks import SpawnMDFWTask, RunVaspCustodian
+from mpmorph.workflow.firetasks.parse_outputs import MDAnalysisTask
 
 import os
 

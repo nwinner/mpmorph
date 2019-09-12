@@ -8,11 +8,8 @@ from atomate.vasp.firetasks.write_inputs import ModifyIncar
 from atomate.vasp.firetasks.glue_tasks import CopyVaspOutputs, get_calc_loc
 from atomate.vasp.firetasks.run_calc import RunVaspCustodian, RunVaspFake
 
-from mpmorph.runners.amorphous_maker import AmorphousMaker
 from mpmorph.runners.rescale_volume import RescaleVolume
 from mpmorph.analysis.md_data import MD_Data
-from mpmorph.analysis.structural_analysis import RadialDistributionFunction
-from mpmorph.analysis.transport import VDOS, Viscosity, Diffusion
 
 __authors__ = 'Nicholas Winner, Muratahan Aykol'
 
