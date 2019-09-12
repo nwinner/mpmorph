@@ -50,25 +50,12 @@ class MDAnalysisTask(FireTaskBase):
 
         analysis_spec = self.get('analysis_spec') or {}
 
-        if checkpoint_dirs:
-            logger.info("LOGGER: Assimilating checkpoint structures")
-            ionic_steps = []
-            structures = []
-            for d in checkpoint_dirs:
-                ionic_steps.extend(Vasprun(os.path.join(d,"vasprun.xml.gz")).ionic_steps)
+        logger.info("Reading in ionic_steps...")
 
-                structures.extend(Vasprun(os.path.join(d, 'vasprun.xml.gz'),
-                                          ionic_step_skip=ionic_step_skip,
-                                          ionic_step_offset=ionic_step_offset).structures)
-
-        else:
-            structures = Xdatcar(calc_loc).structures
-
-        #write a trajectory file for Dospt
-        molecules = []
-        for struc in structures:
-            molecules.append(Molecule(species=struc.species, coords=[s.coords for s in struc.sites]))
-        XYZ(mol=molecules).write_file('traj.xyz')
+        decompress_file("ionic_steps.json.gz")
+        ionic_steps = loadfn("ionic_steps.json")
+        structures = [s.structure for s in ionic_steps]
+        compress_file("ionic_steps.json")
 
         db_dict = {}
         db_dict.update({'density': float(structures[0].density)})
@@ -392,7 +379,7 @@ class ParseCheckpointsTask(FireTaskBase):
                     Default: current working directory
 
     """
-    required_params = ['checkpoint_dirs']
+    required_params = []
     optional_params = ['write_dir']
 
     def run_task(self, fw_spec):

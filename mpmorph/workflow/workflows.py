@@ -8,7 +8,7 @@ from pymatgen.core.structure import Structure
 
 from mpmorph.workflow.mdtasks import PackToLammps, WriteVaspFromLammpsAndIOSet
 from mpmorph.workflow.firetasks.glue_tasks import SpawnMDFWTask, RunVaspCustodian
-from mpmorph.workflow.firetasks.parse_outputs import MDAnalysisTask
+from mpmorph.workflow.firetasks.parse_outputs import MDAnalysisTask, ParseCheckpointsTask, ParseSingleTask
 
 import os
 
@@ -253,7 +253,15 @@ def get_wf_pack_lammps_vasp(pack_input_set = {}, pre_relax_input_set = {}, md_in
     # ---------------------- ANALYSIS SECTION ---------------------------- #
     # -------------------------------------------------------------------- #
 
-    t = MDAnalysisTask(time_step=md_input_set.get('time_step'), analysis_spec=analysis_spec)
+    t = []
+    if spawn_set.get("production", False):
+        write_dir = spawn_set.get("production").get('write_dir', False)
+        t.append(ParseCheckpointsTask(write_dir))
+    else:
+        t.append(ParseSingleTask())
+
+    if spawn_set.get("analysis", False):
+        t.append(MDAnalysisTask(time_step=md_input_set.get('time_step'), analysis_spec=analysis_spec))
 
     fws.append(Firework(t, name="AnalysisTask", parents=md_fw))
 
