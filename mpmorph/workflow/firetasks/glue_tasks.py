@@ -106,10 +106,8 @@ class SpawnMDFWTask(FireTaskBase):
             t.append(CopyVaspOutputs(calc_dir=current_dir, contcar_to_poscar=True))
             t.append(RunVaspCustodian(vasp_cmd=vasp_cmd, gamma_vasp_cmd=">>vasp_gam<<",
                                       handler_group="md", wall_time=wall_time))
-            t.append(SingleMultiSpawn(vasp_cmd=vasp_cmd, wall_time=wall_time, db_file=db_file,
-                                      num_checkpoints=production.get('num_checkpoints', 1),
-                                      incar_update=production.get('incar_update', None),
-                                      spawn_number=production.get('num_parallel', 1)))
+            t.append(ProductionSpawnTask(vasp_cmd=vasp_cmd, wall_time=wall_time, db_file=db_file, spawn_count=1,
+                                         production=production))
             production_fw = Firework(t, name="ProductionRun1")
             return FWAction(stored_data={'pressure': p, 'density_calculated': True}, detours=[production_fw])
 
@@ -157,7 +155,7 @@ class ProductionSpawnTask(FireTaskBase):
         incar_update = production.get('incar_update', None)
         num_parallel = production.get('num_parallel', 1)  # If there are parallel simulations, which num is this one?
 
-        prev_checkpoint_dirs = fw_spec.get("checkpoint_dirs", {})  # If this is the first spawn, create the dict
+        prev_checkpoint_dirs = self.get("checkpoint_dirs", {})  # If this is the first spawn, create the dict
         if num_parallel not in prev_checkpoint_dirs.keys():  # If this is first spawn of this parallel run, make array
             prev_checkpoint_dirs[num_parallel] = []
         prev_checkpoint_dirs[num_parallel].append(os.getcwd())  # add the current directory to the list of checkpoints
@@ -213,12 +211,12 @@ class SingleMultiSpawn(FireTaskBase):
             t.append(ProductionSpawnTask(wall_time=wall_time,
                                          vasp_cmd=vasp_cmd,
                                          db_file=None,
-                                         spawn_count=0,
+                                         spawn_count=1,
                                          production={'num_checkpoints': num_checkpoints,
                                                      'num_parallel': i+1,
                                                      'incar_update': incar_update}))
             fws.append(Firework(t, name="Multispawn_{}_FW".format(i+1)))
-        return FWAction(additions=[fws])
+        return FWAction(detours=[fws])
 
 
 @explicit_serialize
