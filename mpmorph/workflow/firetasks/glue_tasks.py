@@ -156,9 +156,9 @@ class ProductionSpawnTask(FireTaskBase):
         num_parallel = production.get('num_parallel', 1)  # If there are parallel simulations, which num is this one?
 
         prev_checkpoint_dirs = self.get("checkpoint_dirs", {})  # If this is the first spawn, create the dict
-        if num_parallel not in prev_checkpoint_dirs.keys():  # If this is first spawn of this parallel run, make array
-            prev_checkpoint_dirs[num_parallel] = []
-        prev_checkpoint_dirs[num_parallel].append(os.getcwd())  # add the current directory to the list of checkpoints
+        if str(num_parallel) not in prev_checkpoint_dirs.keys():  # If this is first spawn of this parallel run, make array
+            prev_checkpoint_dirs[str(num_parallel)] = []
+        prev_checkpoint_dirs[str(num_parallel)].append(os.getcwd())  # add the current directory to the list of checkpoints
 
         if spawn_count > num_checkpoints:
             logger.info("LOGGER: Production run completed. Took {} spawns total".format(spawn_count))
