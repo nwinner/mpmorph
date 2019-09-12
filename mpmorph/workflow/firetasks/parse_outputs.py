@@ -408,11 +408,10 @@ class ParseCheckpointsTask(FireTaskBase):
         # write each md run (comprised of n checkpoints) to a json file and zip it
         logger.info("LOGGER: Assimilating checkpoint data...")
         ionic_steps = []
-        for parallel_number in checkpoint_dirs.keys():
-            for directory in checkpoint_dirs[parallel_number]:
-                ionic_steps.extend(Vasprun(os.path.join(directory, "vasprun.xml.gz")).ionic_steps)
-            dumpfn(ionic_steps, os.path.join(write_dir, 'ionic_steps_{}.json'.format(parallel_number)))
-            compress_file(os.path.join(write_dir, 'ionic_steps_{}.json'.format(parallel_number)))
+        for directory in checkpoint_dirs:
+            ionic_steps.extend(Vasprun(os.path.join(directory, "vasprun.xml.gz")).ionic_steps)
+        dumpfn(ionic_steps, os.path.join(write_dir, 'ionic_steps.json'))
+        compress_file(os.path.join(write_dir, 'ionic_steps.json'))
 
         # get composition info
         s = ionic_steps[0]['structure']
