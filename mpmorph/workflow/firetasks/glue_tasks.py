@@ -180,7 +180,7 @@ class ProductionSpawnTask(FireTaskBase):
                                       handler_group="md", wall_time=wall_time))
             t.append(ProductionSpawnTask(wall_time=wall_time,
                                          vasp_cmd=vasp_cmd,
-                                         db_file=None,
+                                         db_file=db_file,
                                          spawn_count=spawn_count + 1,
                                          production=production))
             new_fw = Firework(t, name=name, spec={'checkpoint_dirs': prev_checkpoint_dirs})
