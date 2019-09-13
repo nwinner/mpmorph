@@ -386,10 +386,7 @@ class ParseCheckpointsTask(FireTaskBase):
         checkpoint_dirs = self.get('checkpoint_dirs')
         write_dir = self.get('write_dir', False)
 
-        if write_dir:
-            write_dir = os.path.join(os.getcwd(), write_dir)
-            os.mkdir(write_dir)
-        else:
+        if not write_dir:
             write_dir = os.getcwd()
 
         # write each md run (comprised of n checkpoints) to a json file and zip it
