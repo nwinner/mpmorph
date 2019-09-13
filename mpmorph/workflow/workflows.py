@@ -256,7 +256,7 @@ def get_wf_pack_lammps_vasp(pack_input_set = {}, pre_relax_input_set = {}, md_in
     t = []
     if spawn_set.get("production", False):
         write_dir = spawn_set.get("production").get('write_dir', False)
-        t.append(ParseCheckpointsTask(write_dir))
+        t.append(ParseCheckpointsTask(write_dir=write_dir))
     else:
         t.append(ParseSingleTask())
 
