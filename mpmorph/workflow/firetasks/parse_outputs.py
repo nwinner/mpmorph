@@ -402,7 +402,7 @@ class ParseCheckpointsTask(FireTaskBase):
 
         # get composition info
         s = ionic_steps[0]['structure']
-        composition = {{'composition': s.composition.to_data_dict}}
+        composition = {'composition': s.composition.to_data_dict}
         composition.update({'density': float(s.density)})
 
         # write composition info to json and zip
