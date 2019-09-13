@@ -383,7 +383,7 @@ class ParseCheckpointsTask(FireTaskBase):
     optional_params = ['write_dir']
 
     def run_task(self, fw_spec):
-        checkpoint_dirs = self.get('checkpoint_dirs')
+        checkpoint_dirs = fw_spec.get('checkpoint_dirs')
         write_dir = self.get('write_dir', False)
 
         if not write_dir:
